@@ -1,1 +1,1 @@
-Elimina SSL de MySQL y agrega cuatro KPI por campus y modalidad
+Elimina migraciones DDL y deja la creación de tablas como operación externa

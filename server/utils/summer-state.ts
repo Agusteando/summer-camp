@@ -139,12 +139,12 @@ export const saveAttendanceBatch = async (mutations: AttendanceMutation[], plant
     }
     await appQuery(`
       INSERT INTO summer_attendance (
-        summer_year, attendance_date, matricula, status, plantel, actor_email, actor_name, device_id, client_timestamp, idempotency_key
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        summer_year, attendance_date, matricula, status, plantel, actor_name, device_id, client_timestamp, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        status = VALUES(status), plantel = VALUES(plantel), actor_email = VALUES(actor_email), actor_name = VALUES(actor_name),
+        status = VALUES(status), plantel = VALUES(plantel), actor_name = VALUES(actor_name),
         device_id = VALUES(device_id), client_timestamp = VALUES(client_timestamp), idempotency_key = VALUES(idempotency_key), updated_at = CURRENT_TIMESTAMP
-    `, [year(), mutation.date, mutation.matricula, mutation.status, plantel, '', actorName, deviceId, mutation.clientTimestamp.slice(0, 19).replace('T', ' '), mutation.idempotencyKey])
+    `, [year(), mutation.date, mutation.matricula, mutation.status, plantel, actorName, deviceId, mutation.clientTimestamp.slice(0, 19).replace('T', ' '), mutation.idempotencyKey])
     accepted.push(mutation.idempotencyKey)
   }
   return accepted
