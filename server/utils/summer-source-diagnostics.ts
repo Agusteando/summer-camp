@@ -402,36 +402,74 @@ export const diagnoseAuroraEnrollment = async () => {
   const nonEmptyPlanteles = probes.filter((probe) => Number(probe.contract?.dataLength || 0) > 0).map((probe) => probe.plantel)
   const emptyPlanteles = probes.filter((probe) => probe.verdict === 'valid_empty_result').map((probe) => probe.plantel)
   const failedPlanteles = probes.filter((probe) => !probe.transport.ok || !probe.contract?.dataIsArray).map((probe) => probe.plantel)
+  const studentEndpointBranchFailures = probes.flatMap((probe: any) => {
+    const paid = probe.contract?.meta?.queryDiagnostics?.paid
+    const charged = probe.contract?.meta?.queryDiagnostics?.charged
+    return [paid, charged]
+      .filter((branch) => branch && branch.ok === false)
+      .map((branch) => ({ plantel: probe.plantel, branch: branch.key, rowCount: branch.rowCount ?? 0, latencyMs: branch.latencyMs ?? null, error: branch.error || null, source: 'students.meta.queryDiagnostics' }))
+  })
 
   const serverDiagnosticsAvailable = serverDiagnostics.filter((probe) => probe.available === true).length
   const serverDiagnosticsMissing = serverDiagnostics.filter((probe) => probe.transport.status === 404).map((probe) => probe.plantel)
+  const serverDiagnosticsUnauthorized = serverDiagnostics.filter((probe) => probe.transport.status === 401 || probe.transport.status === 403).map((probe) => probe.plantel)
+  const serverDiagnosticsTransportFailures = serverDiagnostics
+    .filter((probe) => !probe.transport.ok)
+    .map((probe) => ({ plantel: probe.plantel, status: probe.transport.status, statusText: probe.transport.statusText, error: probe.error || null, bodyPreview: probe.bodyPreview || null }))
   const serverDiagnosticBranchFailures = serverDiagnostics.flatMap((probe) => {
     const paid = probe.payload?.queryDiagnostics?.paid
     const charged = probe.payload?.queryDiagnostics?.charged
     return [paid, charged]
       .filter((branch) => branch && branch.ok === false)
-      .map((branch) => ({ plantel: probe.plantel, branch: branch.key, error: branch.error || null }))
+      .map((branch) => ({ plantel: probe.plantel, branch: branch.key, rowCount: branch.rowCount ?? 0, latencyMs: branch.latencyMs ?? null, error: branch.error || null }))
   })
+  const serverDiagnosticConclusions = serverDiagnostics.reduce<Record<string, number>>((acc, probe) => {
+    const code = clean(probe.payload?.conclusion?.code || probe.payload?.boundary || (!probe.transport.ok ? `HTTP_${probe.transport.status ?? 'NETWORK'}` : 'UNKNOWN'), 160) || 'UNKNOWN'
+    acc[code] = (acc[code] || 0) + 1
+    return acc
+  }, {})
+  const serverDiagnosticCounts = serverDiagnostics.reduce((acc, probe) => {
+    acc.paidRows += Number(probe.payload?.counts?.paidRows || probe.payload?.queryDiagnostics?.paid?.rowCount || 0)
+    acc.chargedRows += Number(probe.payload?.counts?.chargedRows || probe.payload?.queryDiagnostics?.charged?.rowCount || 0)
+    acc.rowsBeforeDeduplication += Number(probe.payload?.counts?.rowsBeforeDeduplication || 0)
+    acc.distinctMatriculas += Number(probe.payload?.counts?.distinctMatriculas || 0)
+    return acc
+  }, { paidRows: 0, chargedRows: 0, rowsBeforeDeduplication: 0, distinctMatriculas: 0 })
+  const allDeepDiagnosticsConfirmQueriesOkZero = serverDiagnosticsAvailable === configuredPlanteles.length && serverDiagnostics.every((probe) => probe.payload?.conclusion?.code === 'QUERIES_OK_ZERO_STUDENTS')
 
   const findings: Array<{ severity: 'error' | 'warning' | 'info'; code: string; message: string; evidence?: unknown }> = []
-  if (httpSuccesses === probes.length && contractSuccesses === probes.length && totalRawRows === 0) {
+  const allExposedBranchFailures = [...serverDiagnosticBranchFailures, ...studentEndpointBranchFailures]
+  if (allExposedBranchFailures.length) findings.push({
+    severity: 'error',
+    code: 'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',
+    message: 'Aurora confirmó errores en una o más ramas SQL de inscripción. Los errores exactos están en serverDiagnostics[].payload.queryDiagnostics o en probes[].contract.meta.queryDiagnostics.',
+    evidence: allExposedBranchFailures
+  })
+  if (allDeepDiagnosticsConfirmQueriesOkZero) findings.push({
+    severity: 'error',
+    code: 'AURORA_QUERIES_OK_ZERO_STUDENTS',
+    message: 'Aurora ejecutó correctamente paid y charged para todos los planteles, pero los filtros actuales produjeron cero matrículas. La falla está en las suposiciones de ciclo, estatus, tablas o resolución del concepto, no en red ni en Summer Camp.',
+    evidence: { year, cycle, concepts, conclusions: serverDiagnosticConclusions, counts: serverDiagnosticCounts, serverDiagnostics }
+  })
+  if (httpSuccesses === probes.length && contractSuccesses === probes.length && totalRawRows === 0 && !allExposedBranchFailures.length && !allDeepDiagnosticsConfirmQueriesOkZero) {
     findings.push({
       severity: 'error',
       code: 'AURORA_ALL_PLANTELES_VALID_BUT_EMPTY',
       message: 'Todos los planteles respondieron HTTP correctamente y con data[], pero ninguno devolvió alumnos. La falla está antes de Summer Camp: criterios financieros, ciclo, conceptos, estatus, acceso Bridge o consultas de Aurora.',
       evidence: { emptyPlanteles, year, cycle, concepts }
     })
-    findings.push({
+    if (serverDiagnosticsAvailable < configuredPlanteles.length) findings.push({
       severity: 'warning',
-      code: 'AURORA_EMPTY_CAN_HIDE_SQL_FAILURES',
-      message: 'La implementación de Aurora conocida convierte errores de las consultas paid/charged en arreglos vacíos. Un resultado data: [] no demuestra que las consultas SQL hayan ejecutado correctamente; Aurora debe exponer el error de cada rama para distinguir “cero inscritos” de “consulta fallida”.'
+      code: 'AURORA_EMPTY_RESULT_NOT_FULLY_PROVEN',
+      message: 'data: [] por sí solo no distingue cero inscritos de una consulta fallida. Faltan diagnósticos profundos de Aurora en uno o más planteles.',
+      evidence: { availablePlanteles: serverDiagnosticsAvailable, expectedPlanteles: configuredPlanteles.length, missingPlanteles: serverDiagnosticsMissing, transportFailures: serverDiagnosticsTransportFailures }
     })
   }
-  if (serverDiagnosticBranchFailures.length) findings.push({
+  if (serverDiagnosticsUnauthorized.length) findings.push({
     severity: 'error',
-    code: 'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',
-    message: 'Aurora confirmó errores en una o más ramas SQL de inscripción. Los errores exactos están en serverDiagnostics[].payload.queryDiagnostics.',
-    evidence: serverDiagnosticBranchFailures
+    code: 'AURORA_DEEP_DIAGNOSTICS_UNAUTHORIZED',
+    message: 'El endpoint profundo de Aurora rechazó el token en uno o más planteles.',
+    evidence: { planteles: serverDiagnosticsUnauthorized }
   })
   if (serverDiagnosticsMissing.length === configuredPlanteles.length) findings.push({
     severity: 'warning',
@@ -471,7 +509,13 @@ export const diagnoseAuroraEnrollment = async () => {
       deepDiagnostics: {
         availablePlanteles: serverDiagnosticsAvailable,
         missingPlanteles: serverDiagnosticsMissing,
-        branchFailures: serverDiagnosticBranchFailures.length
+        branchFailures: allExposedBranchFailures.length,
+        studentEndpointBranchFailures,
+        unauthorizedPlanteles: serverDiagnosticsUnauthorized,
+        transportFailures: serverDiagnosticsTransportFailures,
+        conclusions: serverDiagnosticConclusions,
+        counts: serverDiagnosticCounts,
+        allQueriesOkZeroStudents: allDeepDiagnosticsConfirmQueriesOkZero
       }
     },
     serverDiagnostics,

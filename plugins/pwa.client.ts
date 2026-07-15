@@ -3,14 +3,16 @@ export default defineNuxtPlugin(() => {
 
   window.addEventListener('load', async () => {
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js')
+      const registration = await navigator.serviceWorker.register('/sw.js?v=10', { updateViaCache: 'none' })
+      await registration.update().catch(() => undefined)
       await navigator.serviceWorker.ready
-      const urls = performance.getEntriesByType('resource')
-        .map((entry) => entry.name)
-        .filter((value) => value.startsWith(location.origin) && !new URL(value).pathname.startsWith('/api/'))
-      urls.push(location.href)
-      const worker = registration.active || registration.waiting || registration.installing || navigator.serviceWorker.controller
-      worker?.postMessage({ type: 'CACHE_URLS', urls })
-    } catch {}
+      const worker = registration.active || registration.waiting || registration.installing
+      worker?.postMessage({ type: 'SUMMER_BUILD', buildId: 'summer-v10-stability' })
+    } catch (cause) {
+      ;(window as any).__SUMMER_PWA_ERROR__ = {
+        at: new Date().toISOString(),
+        message: String((cause as any)?.message || cause)
+      }
+    }
   }, { once: true })
 })

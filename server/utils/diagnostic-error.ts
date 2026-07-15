@@ -31,5 +31,6 @@ export const diagnosticFailure = (stage: string, cause: any, requestId: string) 
   requestId,
   stage,
   error: serializeDiagnosticError(cause),
+  details: cause?.diagnostic || cause?.failures || cause?.data || null,
   at: new Date().toISOString()
 })

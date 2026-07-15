@@ -1,1 +1,1 @@
-fix: ejecutar y completar el diagnóstico antes de copiarlo
+fix: aislar la carga de alumnos y completar el diagnóstico DX10

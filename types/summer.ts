@@ -49,6 +49,9 @@ export type SnapshotResponse = {
     partial: boolean
     failedPlanteles: string[]
     cached?: boolean
+    buildId?: string
+    snapshotVersion?: number
+    requestId?: string
   }
 }
 
@@ -111,6 +114,8 @@ export type ServerDiagnosticCheck = {
 
 export type SummerDiagnosticsResponse = {
   diagnosticVersion?: number
+  buildId?: string
+  snapshotVersion?: number
   ok: boolean
   requestId: string
   checkedAt: string

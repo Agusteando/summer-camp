@@ -1,3 +1,4 @@
+import { SUMMER_BUILD_ID, SUMMER_DX_VERSION, SUMMER_SNAPSHOT_VERSION } from '../../utils/build'
 import { diagnosticFailure } from '../../utils/diagnostic-error'
 import { loadSummerSource } from '../../utils/summer-source'
 import { buildSnapshot } from '../../utils/summer-state'
@@ -10,7 +11,9 @@ export default defineEventHandler(async (event) => {
   const date = isoDate(getQuery(event).date, today)!
   const requestId = `snapshot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   setResponseHeader(event, 'X-Summer-Request-Id', requestId)
-  setResponseHeader(event, 'X-Summer-Snapshot-Version', '9')
+  setResponseHeader(event, 'X-Summer-Build-Id', SUMMER_BUILD_ID)
+  setResponseHeader(event, 'X-Summer-DX-Version', String(SUMMER_DX_VERSION))
+  setResponseHeader(event, 'X-Summer-Snapshot-Version', String(SUMMER_SNAPSHOT_VERSION))
   let stage = 'source_students'
 
   try {
@@ -33,7 +36,7 @@ export default defineEventHandler(async (event) => {
     setResponseHeader(event, 'X-Summer-Source', source.source)
     setResponseHeader(event, 'X-Summer-Source-Students', String(source.students.length))
     setResponseHeader(event, 'X-Summer-Source-Partial', String(source.partial))
-    if (!snapshot || !Array.isArray(snapshot.students) || !Array.isArray(snapshot.summaries)) {
+    if (!snapshot || !Array.isArray(snapshot.students) || !Array.isArray(snapshot.summaries) || !snapshot.meta || typeof snapshot.meta !== 'object') {
       const error: any = new Error('La construcción de la lista terminó con una respuesta inválida.')
       error.code = 'SUMMER_SNAPSHOT_INVALID'
       error.diagnostic = {
@@ -42,6 +45,9 @@ export default defineEventHandler(async (event) => {
       }
       throw error
     }
+    snapshot.meta.buildId = SUMMER_BUILD_ID
+    snapshot.meta.snapshotVersion = SUMMER_SNAPSHOT_VERSION
+    snapshot.meta.requestId = requestId
     return snapshot
   } catch (cause: any) {
     const diagnostic = diagnosticFailure(stage, cause, requestId)

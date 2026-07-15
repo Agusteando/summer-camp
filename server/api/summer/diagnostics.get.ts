@@ -1,3 +1,4 @@
+import { SUMMER_BUILD_ID, SUMMER_DX_VERSION, SUMMER_SNAPSHOT_VERSION } from '../../utils/build'
 import { appQuery } from '../../utils/db'
 import { serializeDiagnosticError } from '../../utils/diagnostic-error'
 import { diagnoseAuroraEnrollment } from '../../utils/summer-source-diagnostics'
@@ -35,7 +36,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const id = requestId()
-  setResponseHeader(event, 'X-Summer-DX-Version', '9')
+  setResponseHeader(event, 'X-Summer-Build-Id', SUMMER_BUILD_ID)
+  setResponseHeader(event, 'X-Summer-DX-Version', String(SUMMER_DX_VERSION))
   setResponseHeader(event, 'X-Summer-DX-Request-Id', id)
   const started = Date.now()
   const today = new Date().toISOString().slice(0, 10)
@@ -65,6 +67,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const runtime = {
+    build: { id: SUMMER_BUILD_ID, dxVersion: SUMMER_DX_VERSION, snapshotVersion: SUMMER_SNAPSHOT_VERSION },
     node: process.version,
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || null,
     region: process.env.VERCEL_REGION || null,
@@ -74,8 +77,15 @@ export default defineEventHandler(async (event) => {
       host: getHeader(event, 'host') || null,
       userAgent: getHeader(event, 'user-agent') || null,
       forwardedProto: getHeader(event, 'x-forwarded-proto') || null,
-      forwardedHost: getHeader(event, 'x-forwarded-host') || null
+      forwardedHost: getHeader(event, 'x-forwarded-host') || null,
+      clientBuild: getHeader(event, 'x-summer-client-build') || null,
+      clientDxVersion: getHeader(event, 'x-summer-client-dx-version') || null
     }
+  }
+
+  const auroraBaseUrl = String(config.auroraBaseUrl || '').trim().replace(/\/+$/, '')
+  const safeEndpoint = (pathname: string) => {
+    try { return new URL(pathname, auroraBaseUrl).toString() } catch { return null }
   }
 
   const configuration = {
@@ -86,7 +96,11 @@ export default defineEventHandler(async (event) => {
     conceptsExactlyExpected: concepts.length === 3 && [986, 987, 988].every((idValue) => concepts.includes(idValue)),
     configuredPlanteles: planteles,
     configuredPlantelCount: planteles.length,
-    auroraBaseUrlConfigured: Boolean(String(config.auroraBaseUrl || '').trim()),
+    auroraBaseUrlConfigured: Boolean(auroraBaseUrl),
+    auroraOrigin: (() => { try { const url = new URL(auroraBaseUrl); return `${url.protocol}//${url.host}` } catch { return null } })(),
+    auroraStudentsEndpoint: safeEndpoint('/api/external/v1/summer/students'),
+    auroraDiagnosticsEndpoint: safeEndpoint('/api/external/v1/summer/diagnostics'),
+    auroraHealthEndpoint: safeEndpoint('/api/external/v1/summer/health'),
     auroraApiTokenConfigured: Boolean(String(config.auroraApiToken || '').trim()),
     auroraTimeoutMs: Number(config.auroraTimeoutMs || 12000),
     appMysqlConfigured: Boolean(config.appMysqlHost && config.appMysqlUser && config.appMysqlDatabase),
@@ -359,7 +373,22 @@ export default defineEventHandler(async (event) => {
       evidence: snapshotCheck || null
     }
   ]
-  const failureBoundary = boundaries.find((boundary) => !boundary.ok) || null
+  const failureBoundaryIndex = boundaries.findIndex((boundary) => !boundary.ok)
+  const failureBoundary = failureBoundaryIndex >= 0 ? boundaries[failureBoundaryIndex] : null
+  const previousBoundary = failureBoundaryIndex > 0 ? boundaries[failureBoundaryIndex - 1] : null
+  const preciseFinding = findings.find((finding) => [
+    'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',
+    'AURORA_QUERIES_OK_ZERO_STUDENTS',
+    'AURORA_DEEP_DIAGNOSTICS_UNAUTHORIZED',
+    'AURORA_NO_HTTP_SUCCESS',
+    'AURORA_RESPONSE_CONTRACT_MISMATCH',
+    'AURORA_ROWS_WRONG_CONCEPTS'
+  ].includes(finding.code)) || (failureBoundary ? {
+    severity: 'error' as const,
+    code: `FIRST_FAILED_BOUNDARY_${failureBoundary.key.toUpperCase()}`,
+    message: `El primer límite que falla es “${failureBoundary.label}”.`,
+    evidence: { failed: failureBoundary, previousSuccessfulBoundary: previousBoundary }
+  } : primaryFinding)
   const exactAuroraRequests = (auroraInspection?.probes || []).map((probe: any) => ({
     plantel: probe.plantel,
     campus: probe.campus,
@@ -372,7 +401,9 @@ export default defineEventHandler(async (event) => {
   }))
 
   return {
-    diagnosticVersion: 9,
+    diagnosticVersion: SUMMER_DX_VERSION,
+    buildId: SUMMER_BUILD_ID,
+    snapshotVersion: SUMMER_SNAPSHOT_VERSION,
     ok,
     requestId: id,
     checkedAt: new Date().toISOString(),
@@ -391,8 +422,8 @@ export default defineEventHandler(async (event) => {
       programRule: 'Husky Dreamers / Clínica se toma de summer_student_overrides; el concepto financiero no identifica modalidad.',
       mealRule: '986 = sin alimento, 987 = un alimento por definir, 988 = comida + cena.',
       snapshotDependencies: 'Una lista visible requiere: fuente con alumnos + lectura MySQL app + buildSnapshot + respuesta HTTP JSON + asignación en el estado cliente.',
-      auroraKnownRisk: 'La versión conocida de Aurora atrapa errores de las dos consultas financieras y los convierte en arreglos vacíos; data: [] puede ocultar una falla SQL.',
-      currentLimitation: 'Sin el endpoint opcional /api/external/v1/summer/diagnostics de Aurora, Summer Camp puede localizar la falla en Aurora pero no leer el error SQL que Aurora haya ocultado.'
+      auroraFinancialQueries: 'Aurora actual debe exponer paid y charged por separado. Cada rama reporta ok, rowCount, latencyMs y error SQL serializado.',
+      auroraDeepDiagnostic: 'GET /api/external/v1/summer/diagnostics se consulta por cada plantel y debe distinguir consultas correctas con cero filas, una rama fallida, ambas ramas fallidas y fallo de contexto Bridge.'
     },
     diagnosticCompleteness: {
       expectedPlantelProbes: sourceMode === 'aurora' || sourceMode === 'hybrid' ? planteles.length : 0,
@@ -418,8 +449,11 @@ export default defineEventHandler(async (event) => {
     exactAuroraRequests,
     boundaries,
     conclusion: {
-      primaryFinding,
+      primaryFinding: preciseFinding,
+      originalFinding: primaryFinding,
       failureBoundary,
+      failureBoundaryIndex,
+      previousSuccessfulBoundary: previousBoundary,
       allFindings: findings,
       serverPipelineComplete: Boolean(snapshotCheck?.ok),
       sourceRowsObservedDirectly: auroraInspection?.aggregate?.totalRawRows ?? null,

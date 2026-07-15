@@ -17,15 +17,17 @@ type DxExecution = {
 }
 
 const config = useRuntimeConfig()
+const CLIENT_BUILD_ID = 'summer-v10-stability'
+const CLIENT_DX_VERSION = 10
 const route = useRoute()
 const summer = useSummerData()
 const connectivity = useConnectivity()
-const report = useState<SummerDiagnosticsResponse | null>('summer-diagnostic-report', () => null)
-const loading = useState('summer-diagnostic-loading', () => false)
-const fetchError = useState<string | null>('summer-diagnostic-fetch-error', () => null)
-const rawProbes = useState<Record<string, any> | null>('summer-diagnostic-raw-probes', () => null)
-const browserContext = useState<Record<string, unknown> | null>('summer-diagnostic-browser-context', () => null)
-const execution = useState<DxExecution>('summer-diagnostic-execution-v9', () => ({
+const report = useState<SummerDiagnosticsResponse | null>('summer-diagnostic-report-v10', () => null)
+const loading = useState('summer-diagnostic-loading-v10', () => false)
+const fetchError = useState<string | null>('summer-diagnostic-fetch-error-v10', () => null)
+const rawProbes = useState<Record<string, any> | null>('summer-diagnostic-raw-probes-v10', () => null)
+const browserContext = useState<Record<string, unknown> | null>('summer-diagnostic-browser-context-v10', () => null)
+const execution = useState<DxExecution>('summer-diagnostic-execution-v10', () => ({
   status: 'idle',
   attempt: 0,
   runId: null,
@@ -53,10 +55,10 @@ const snapshotOk = computed(() => Boolean(summer.snapshot.value?.students && sum
 const diagnosticComplete = computed(() => Boolean(
   execution.value.status === 'complete' &&
   browserContext.value &&
+  rawProbes.value?.build &&
   rawProbes.value?.health &&
   rawProbes.value?.snapshot &&
-  rawProbes.value?.diagnostics &&
-  (report.value || fetchError.value)
+  rawProbes.value?.diagnostics
 ))
 const hasFailure = computed(() => Boolean(
   summer.error.value ||
@@ -66,6 +68,7 @@ const hasFailure = computed(() => Boolean(
 ))
 const completedChecks = computed(() => report.value?.checks.filter((check) => check.ok).length || 0)
 const primaryFinding = computed(() => (report.value as any)?.conclusion?.primaryFinding || null)
+const copyPayloadReady = computed(() => diagnosticComplete.value || execution.value.status === 'failed')
 
 const safeError = (cause: any) => ({
   name: cause?.name || null,
@@ -99,6 +102,10 @@ const summarizeJson = (json: any) => {
       unmarked: row?.unmarked ?? null,
       pendingProgram: row?.pendingProgram ?? null
     })) ?? [],
+    buildId: object?.buildId ?? object?.meta?.buildId ?? null,
+    dxVersion: object?.dxVersion ?? object?.diagnosticVersion ?? null,
+    snapshotVersion: object?.snapshotVersion ?? object?.meta?.snapshotVersion ?? null,
+    requestId: object?.requestId ?? object?.meta?.requestId ?? object?.data?.diagnostic?.requestId ?? null,
     meta: object?.meta || null,
     errorMessage: object?.message || object?.statusMessage || object?.data?.message || null,
     diagnostic: object?.data?.diagnostic || object?.diagnostic || null
@@ -116,7 +123,13 @@ const endpointProbe = async (path: string, timeoutMs: number) => {
       method: 'GET',
       cache: 'no-store',
       credentials: 'same-origin',
-      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        'X-Summer-Client-Build': CLIENT_BUILD_ID,
+        'X-Summer-Client-DX-Version': String(CLIENT_DX_VERSION)
+      },
       signal: controller.signal
     })
     const body = await response.text()
@@ -177,12 +190,12 @@ const collectBrowserContext = async () => {
   const registrations = registrationResult.value
   const storage = (() => {
     try {
-      const currentKey = `summer-snapshot:v9:${summer.selectedDate.value}`
+      const currentKey = `summer-snapshot:v10:${summer.selectedDate.value}`
       return {
         currentSnapshotKey: currentKey,
         currentSnapshotCharacters: localStorage.getItem(currentKey)?.length || 0,
         allSummerKeys: Object.keys(localStorage).filter((key) => key.startsWith('summer-')).sort(),
-        legacySnapshotKeys: Object.keys(localStorage).filter((key) => /^summer-snapshot:v[1-8]:/.test(key)).sort()
+        legacySnapshotKeys: Object.keys(localStorage).filter((key) => /^summer-snapshot:v(?:[1-9]):/.test(key)).sort()
       }
     } catch (cause: any) {
       return { error: safeError(cause) }
@@ -196,13 +209,19 @@ const collectBrowserContext = async () => {
 
   return {
     capturedAt: new Date().toISOString(),
+    buildIdentity: { clientBuildId: CLIENT_BUILD_ID, clientDxVersion: CLIENT_DX_VERSION, runtimeBuildId: config.public.buildId || null, runtimeDxVersion: config.public.diagnosticVersion || null },
+    prebootCleanup: (window as any).__SUMMER_PREBOOT__ || null,
     page: {
       href: window.location.href,
       origin: window.location.origin,
       route: route.fullPath,
       protocol: window.location.protocol,
       documentReadyState: document.readyState,
-      visibilityState: document.visibilityState
+      visibilityState: document.visibilityState,
+      scriptSources: Array.from(document.scripts).map((script) => script.src || '[inline]').filter(Boolean),
+      stylesheetSources: Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).map((link) => link.href),
+      nuxtStateKeys: Object.keys((window as any).__NUXT__?.state || {}).sort(),
+      nuxtConfigPublic: (window as any).__NUXT__?.config?.public || null
     },
     browser: {
       userAgent: navigator.userAgent,
@@ -267,6 +286,10 @@ const clientFindings = computed(() => {
   if (lifecycle.loadAttempted && !summer.requestDiagnostic.value && lifecycle.lastLoadOutcome !== 'running') findings.push({ severity: 'error', code: 'CLIENT_REFRESH_NOT_REACHED', message: 'load() sí inició, pero no existe requestDiagnostic. La ejecución se detuvo antes o dentro de paintCache()/cola local.', evidence: { lifecycle, trace: summer.clientTrace.value } })
   if (lifecycle.loadAttempted && summer.clientTrace.value.length === 0) findings.push({ severity: 'error', code: 'CLIENT_TRACE_EMPTY_AFTER_LOAD', message: 'El estado indica que hubo intento de carga, pero no se registró ningún evento cliente; revisar hidratación o estado Nuxt duplicado.', evidence: lifecycle })
   if (summer.requestDiagnostic.value?.ok && !summer.snapshot.value) findings.push({ severity: 'error', code: 'FETCH_OK_STATE_EMPTY', message: '$fetch terminó correctamente, pero snapshot quedó nulo. La falla está en validación/asignación o en una sustitución posterior del estado.', evidence: summer.requestDiagnostic.value })
+  const serverBuildId = rawProbes.value?.build?.response?.buildId || rawProbes.value?.build?.response?.headers?.['x-summer-build-id'] || null
+  const serverDxVersion = Number(rawProbes.value?.build?.response?.dxVersion || rawProbes.value?.build?.response?.headers?.['x-summer-dx-version'] || 0) || null
+  if (serverBuildId && serverBuildId !== CLIENT_BUILD_ID) findings.push({ severity: 'error', code: 'CLIENT_SERVER_BUILD_MISMATCH', message: 'El navegador y el servidor ejecutan builds distintos. Cualquier otro resultado DX puede mezclar código viejo y nuevo.', evidence: { clientBuildId: CLIENT_BUILD_ID, serverBuildId, clientDxVersion: CLIENT_DX_VERSION, serverDxVersion } })
+  if (serverDxVersion && serverDxVersion !== CLIENT_DX_VERSION) findings.push({ severity: 'error', code: 'CLIENT_SERVER_DX_VERSION_MISMATCH', message: 'La versión DX del navegador no coincide con la versión reportada por el servidor.', evidence: { clientDxVersion: CLIENT_DX_VERSION, serverDxVersion } })
   if (rawProbes.value?.snapshot?.response?.ok && Number(rawProbes.value.snapshot.response.studentsLength) > 0 && !summer.snapshot.value) findings.push({ severity: 'error', code: 'DIRECT_SNAPSHOT_OK_UI_EMPTY', message: 'El GET nativo a /snapshot devuelve alumnos, pero la UI no tiene snapshot. La fuente y el servidor funcionan; falla el estado cliente.', evidence: rawProbes.value.snapshot.response })
   if (rawProbes.value?.snapshot?.response?.status && !rawProbes.value.snapshot.response.ok) findings.push({ severity: 'error', code: 'DIRECT_SNAPSHOT_HTTP_ERROR', message: 'El endpoint /snapshot falla por HTTP. El cuerpo y diagnostic de esa respuesta están incluidos en directBrowserProbes.snapshot.', evidence: rawProbes.value.snapshot.response })
   if (execution.value.status !== 'complete') findings.push({ severity: 'warning', code: 'DX_NOT_COMPLETE', message: 'El diagnóstico todavía no contiene todas las pruebas. Usar “Ejecutar y copiar”.', evidence: execution.value })
@@ -274,19 +297,22 @@ const clientFindings = computed(() => {
 })
 
 const reportPayload = computed(() => ({
-  dxVersion: 9,
+  dxVersion: CLIENT_DX_VERSION,
+  buildId: CLIENT_BUILD_ID,
   purpose: 'Diagnóstico temporal de la carga de alumnos. El botón de copia ejecuta y espera todas las pruebas antes de copiar.',
   capturedAt: new Date().toISOString(),
   diagnosticExecution: execution.value,
   diagnosticCompleteness: {
     complete: diagnosticComplete.value,
     browserCaptured: Boolean(browserContext.value),
+    buildProbeCaptured: Boolean(rawProbes.value?.build),
     healthProbeCaptured: Boolean(rawProbes.value?.health),
     snapshotProbeCaptured: Boolean(rawProbes.value?.snapshot),
     serverDiagnosticProbeCaptured: Boolean(rawProbes.value?.diagnostics),
     serverDiagnosticParsed: Boolean(report.value),
     diagnosticFetchErrorCaptured: Boolean(fetchError.value),
     copyActionWaitsForCompleteRun: true,
+    staleDx8ReportRejectedByVersion: true,
     readyForCopy: diagnosticComplete.value
   },
   visibleProblem: {
@@ -329,6 +355,9 @@ const stringifyReport = (value: unknown) => {
   }, 2)
 }
 const formatted = computed(() => stringifyReport(reportPayload.value))
+const displayedJson = computed(() => copyPayloadReady.value
+  ? formatted.value
+  : 'DX10 aún está ejecutando o no ha iniciado. Usa “Ejecutar y copiar todo”; el JSON incompleto no se puede seleccionar.')
 
 const unwrapDiagnostics = (payload: any) => {
   const candidates = [payload, payload?.data, payload?.data?.data]
@@ -340,7 +369,7 @@ const run = async (trigger = 'manual') => {
   if (activeRun) return await activeRun
 
   activeRun = (async () => {
-    const runId = `dx9-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const runId = `dx10-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     const started = Date.now()
     loading.value = true
     fetchError.value = null
@@ -360,18 +389,21 @@ const run = async (trigger = 'manual') => {
 
     try {
       browserContext.value = await collectBrowserContext()
-      execution.value = { ...execution.value, stage: 'probe-health-snapshot-diagnostics' }
       const date = encodeURIComponent(summer.selectedDate.value)
-      const [healthProbe, snapshotProbe, diagnosticsProbe] = await Promise.all([
-        endpointProbe('/api/summer/health', 20000),
-        endpointProbe(`/api/summer/snapshot?date=${date}`, 60000),
-        endpointProbe(`/api/summer/diagnostics?date=${date}`, 120000)
-      ])
-      rawProbes.value = {
-        health: { request: healthProbe.request, response: healthProbe.response },
-        snapshot: { request: snapshotProbe.request, response: snapshotProbe.response },
-        diagnostics: { request: diagnosticsProbe.request, response: diagnosticsProbe.response }
+      rawProbes.value = {}
+      const executeProbe = async (key: string, path: string, timeoutMs: number) => {
+        execution.value = { ...execution.value, stage: `probe-${key}` }
+        const probe = await endpointProbe(path, timeoutMs)
+        rawProbes.value = {
+          ...(rawProbes.value || {}),
+          [key]: { request: probe.request, response: probe.response }
+        }
+        return probe
       }
+      const buildProbe = await executeProbe('build', '/api/summer/build', 15000)
+      const healthProbe = await executeProbe('health', '/api/summer/health', 20000)
+      const snapshotProbe = await executeProbe('snapshot', `/api/summer/snapshot?date=${date}`, 60000)
+      const diagnosticsProbe = await executeProbe('diagnostics', `/api/summer/diagnostics?date=${date}`, 120000)
 
       execution.value = { ...execution.value, stage: 'parse-server-diagnostic' }
       const candidate = unwrapDiagnostics(diagnosticsProbe.parsedJson)
@@ -382,6 +414,11 @@ const run = async (trigger = 'manual') => {
         fetchError.value = `El endpoint de diagnóstico no devolvió checks[]. HTTP ${diagnosticsProbe.response.status ?? 'sin estado'}; JSON=${diagnosticsProbe.response.jsonParsed ?? false}; keys=${(diagnosticsProbe.response.topLevelKeys || []).join(',') || '(ninguna)'}.`
       }
 
+      const serverBuildId = buildProbe.response?.buildId || buildProbe.response?.headers?.['x-summer-build-id'] || null
+      const serverDxVersion = Number(buildProbe.response?.dxVersion || buildProbe.response?.headers?.['x-summer-dx-version'] || 0) || null
+      if (serverBuildId !== CLIENT_BUILD_ID || serverDxVersion !== CLIENT_DX_VERSION) {
+        fetchError.value = [fetchError.value, `BUILD_MISMATCH client=${CLIENT_BUILD_ID}/DX${CLIENT_DX_VERSION} server=${serverBuildId || 'null'}/DX${serverDxVersion || 'null'}`].filter(Boolean).join(' | ')
+      }
       execution.value = { ...execution.value, stage: 'collect-browser-after' }
       browserContext.value = await collectBrowserContext()
       execution.value = {
@@ -446,6 +483,17 @@ const copy = async () => {
   copied.value = false
   try {
     await ensureFullDiagnostic('copy-button')
+    if (!diagnosticComplete.value && execution.value.status !== 'failed') {
+      const missing = {
+        browser: !browserContext.value,
+        build: !rawProbes.value?.build,
+        health: !rawProbes.value?.health,
+        snapshot: !rawProbes.value?.snapshot,
+        diagnostics: !rawProbes.value?.diagnostics
+      }
+      fetchError.value = [fetchError.value, `DX_RUN_INCOMPLETE ${JSON.stringify(missing)}`].filter(Boolean).join(' | ')
+      execution.value = { ...execution.value, status: 'failed', stage: 'incomplete-after-run', finishedAt: new Date().toISOString(), error: fetchError.value }
+    }
     browserContext.value = await collectBrowserContext().catch(() => browserContext.value)
     await nextTick()
     const success = await writeClipboard(formatted.value)
@@ -463,6 +511,10 @@ const scheduleAutoRun = (delay = 700, reason = 'auto-after-load') => {
   execution.value = { ...execution.value, status: execution.value.status === 'running' ? 'running' : 'scheduled', scheduledAt: new Date().toISOString(), trigger: reason, stage: execution.value.status === 'running' ? execution.value.stage : 'waiting-for-client-load' }
   autoTimer = window.setTimeout(async () => {
     if (!summer.loadLifecycle.value.loadAttempted) await summer.load('dx-auto-load-failsafe')
+    if (summer.loadLifecycle.value.lastLoadOutcome === 'running') {
+      scheduleAutoRun(1200, `${reason}-waiting-for-load`)
+      return
+    }
     if (!summer.snapshot.value) await run(reason)
   }, delay)
 }
@@ -485,7 +537,7 @@ onMounted(async () => {
   clientMounted.value = true
   summer.noteClientMounted('dx-component-mounted')
   browserContext.value = await collectBrowserContext().catch(() => null)
-  scheduleAutoRun(1200, 'auto-on-mount')
+  scheduleAutoRun(2500, 'auto-on-mount')
 })
 onBeforeUnmount(() => { if (autoTimer) clearTimeout(autoTimer) })
 </script>
@@ -496,7 +548,7 @@ onBeforeUnmount(() => { if (autoTimer) clearTimeout(autoTimer) })
       <summary>
         <span class="diagnostic-panel__icon"><Bug :size="16" /></span>
         <span class="diagnostic-panel__title">
-          <strong>DX · Carga de alumnos</strong>
+          <strong>DX10 · Carga de alumnos</strong>
           <small v-if="loading">{{ execution.stage }} · {{ execution.runId || 'preparando' }}</small>
           <small v-else-if="primaryFinding">{{ primaryFinding.code }} · {{ primaryFinding.message }}</small>
           <small v-else-if="!loadAttempted">Esperando la primera carga del cliente</small>
@@ -530,10 +582,11 @@ onBeforeUnmount(() => { if (autoTimer) clearTimeout(autoTimer) })
             Ejecutar prueba completa
           </button>
           <button :disabled="copying" @click="copy"><LoaderCircle v-if="copying" :size="15" class="spin" /><Check v-else-if="copied" :size="15" /><Clipboard v-else :size="15" />{{ copying ? 'Ejecutando y copiando…' : copied ? 'Copiado' : 'Ejecutar y copiar todo' }}</button>
-          <button @click="selectAll"><FileJson :size="15" />{{ selected ? 'Seleccionado' : 'Seleccionar JSON' }}</button>
+          <button :disabled="!copyPayloadReady" @click="selectAll"><FileJson :size="15" />{{ selected ? 'Seleccionado' : 'Seleccionar JSON' }}</button>
         </div>
 
         <div class="diagnostic-summary-grid">
+          <div><span>Build</span><strong :class="rawProbes?.build?.response?.buildId === CLIENT_BUILD_ID ? 'is-ok' : 'is-bad'">{{ CLIENT_BUILD_ID }} / {{ rawProbes?.build?.response?.buildId || 'servidor pendiente' }}</strong></div>
           <div><span>Carga cliente</span><strong :class="loadAttempted ? 'is-ok' : 'is-bad'">{{ summer.loadLifecycle.value.lastLoadOutcome }} · {{ summer.loadLifecycle.value.loadCallCount }} llamada(s)</strong></div>
           <div><span>Estado cliente</span><strong :class="summer.snapshot.value ? 'is-ok' : 'is-bad'">{{ summer.snapshot.value ? `${summer.snapshot.value.students.length} alumnos` : 'snapshot = null' }}</strong></div>
           <div><span>Solicitud $fetch</span><strong :class="summer.requestDiagnostic.value?.ok ? 'is-ok' : 'is-bad'">{{ summer.requestDiagnostic.value?.statusCode ?? 'sin estado' }} · {{ summer.requestDiagnostic.value?.durationMs ?? '—' }} ms</strong></div>
@@ -564,7 +617,7 @@ onBeforeUnmount(() => { if (autoTimer) clearTimeout(autoTimer) })
           class="diagnostic-json"
           readonly
           spellcheck="false"
-          :value="formatted"
+          :value="displayedJson"
           @focus="($event.target as HTMLTextAreaElement).select()"
         />
 

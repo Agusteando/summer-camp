@@ -14,6 +14,51 @@ export default defineNuxtConfig({
         { name: 'format-detection', content: 'telephone=no' },
         { name: 'description', content: 'Control operativo de Summer Camp IECS / IEDIS' }
       ],
+      script: [
+        {
+          key: 'summer-stability-preboot-v10',
+          innerHTML: `(() => {
+            const state = { buildId: 'summer-v10-stability', startedAt: new Date().toISOString(), finishedAt: null, serviceWorkersFound: 0, serviceWorkersUnregistered: 0, cachesFound: [], cachesDeleted: [], legacySnapshotsDeleted: [], errors: [] };
+            window.__SUMMER_PREBOOT__ = state;
+            const jobs = [];
+            try {
+              if ('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+                state.serviceWorkersFound = registrations.length;
+                const obsolete = registrations.filter((registration) => ![registration.active, registration.waiting, registration.installing].some((worker) => worker?.scriptURL?.includes('/sw.js?v=10')));
+                const results = await Promise.allSettled(obsolete.map((registration) => registration.unregister()));
+                state.serviceWorkersUnregistered = results.filter((result) => result.status === 'fulfilled' && result.value === true).length;
+              }).catch((error) => state.errors.push({ stage: 'service-workers', message: String(error?.message || error) })));
+              if ('caches' in window) jobs.push(caches.keys().then(async (names) => {
+                state.cachesFound = names;
+                const obsolete = names.filter((name) => name.startsWith('summer-camp-shell-') && name !== 'summer-camp-shell-v10');
+                const results = await Promise.allSettled(obsolete.map(async (name) => ({ name, deleted: await caches.delete(name) })));
+                state.cachesDeleted = results.filter((result) => result.status === 'fulfilled' && result.value.deleted).map((result) => result.value.name);
+              }).catch((error) => state.errors.push({ stage: 'cache-storage', message: String(error?.message || error) })));
+              try {
+                const keys = Object.keys(localStorage);
+                for (const key of keys) {
+                  if (/^summer-snapshot:v(?:[1-9]):/.test(key)) { localStorage.removeItem(key); state.legacySnapshotsDeleted.push(key); }
+                }
+              } catch (error) { state.errors.push({ stage: 'local-storage', message: String(error?.message || error) }); }
+            } catch (error) { state.errors.push({ stage: 'preboot', message: String(error?.message || error) }); }
+            Promise.allSettled(jobs).finally(() => {
+              state.finishedAt = new Date().toISOString();
+              const needsCleanReload = state.serviceWorkersUnregistered > 0 || state.cachesDeleted.length > 0;
+              const guardKey = 'summer-v10-clean-reload';
+              if (needsCleanReload && !sessionStorage.getItem(guardKey)) {
+                sessionStorage.setItem(guardKey, state.finishedAt);
+                state.reloadScheduled = true;
+                const next = new URL(window.location.href);
+                next.searchParams.set('__summer_build', 'v10');
+                window.location.replace(next.toString());
+                return;
+              }
+              if (!needsCleanReload) sessionStorage.removeItem(guardKey);
+              window.dispatchEvent(new CustomEvent('summer:preboot-complete', { detail: state }));
+            });
+          })();`
+        }
+      ],
       link: [
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'icon', type: 'image/png', href: '/icons/dinos.png' },
@@ -48,6 +93,8 @@ export default defineNuxtConfig({
       refreshIntervalMs: Number(process.env.NUXT_PUBLIC_REFRESH_INTERVAL_MS || 120000),
       healthIntervalMs: Number(process.env.NUXT_PUBLIC_HEALTH_INTERVAL_MS || 45000),
       appVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'local',
+      buildId: 'summer-v10-stability',
+      diagnosticVersion: 10,
       diagnosticsEnabled: process.env.NUXT_PUBLIC_SUMMER_DIAGNOSTICS !== 'false'
     }
   },
@@ -55,7 +102,10 @@ export default defineNuxtConfig({
     preset: 'vercel',
     compressPublicAssets: true,
     routeRules: {
-      '/api/**': { headers: { 'Cache-Control': 'no-store' } },
+      '/api/**': { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } },
+      '/': { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } },
+      '/attendance': { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } },
+      '/setup': { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } },
       '/icons/**': { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } },
       '/brand/**': { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } }
     }
