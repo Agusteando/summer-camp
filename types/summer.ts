@@ -1,0 +1,62 @@
+export type ProgramKind = 'husky_dreamers' | 'clinica_futbol' | 'unassigned'
+export type MealPlan = 'none' | 'comida' | 'cena' | 'comida_cena' | 'pending_one'
+export type AttendanceStatus = 'present' | 'absent' | 'unmarked'
+
+export type SummerStudent = {
+  matricula: string
+  name: string
+  plantel: string
+  plantelLabel: string
+  campus: 'Metepec' | 'Toluca' | 'Otro'
+  curp: string
+  age: number | null
+  ageSource: 'curp' | 'manual' | 'missing'
+  ageGroup: string
+  program: ProgramKind
+  conceptId: number
+  mealCount: number
+  mealPlan: MealPlan
+  photoAvailable: boolean
+  photoToken: string | null
+  attendanceToken: string
+  attendance: AttendanceStatus
+  attendanceUpdatedAt: string | null
+  source: 'aurora' | 'mysql' | 'demo'
+}
+
+export type PlantelSummary = {
+  plantel: string
+  label: string
+  campus: string
+  total: number
+  present: number
+  absent: number
+  unmarked: number
+  food: number
+  pendingProgram: number
+}
+
+export type SnapshotResponse = {
+  date: string
+  students: SummerStudent[]
+  summaries: PlantelSummary[]
+  meta: {
+    generatedAt: string
+    source: string
+    sourceReachable: boolean
+    partial: boolean
+    failedPlanteles: string[]
+    cached?: boolean
+  }
+}
+
+export type AttendanceMutation = {
+  queueKey: string
+  idempotencyKey: string
+  deviceId: string
+  studentToken: string
+  matricula: string
+  date: string
+  status: Exclude<AttendanceStatus, 'unmarked'>
+  clientTimestamp: string
+}

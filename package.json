@@ -1,0 +1,22 @@
+{
+  "name": "summer-camp-iecs-iedis",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=20.19 <25",
+    "npm": ">=10 <12"
+  },
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.0.0",
+    "mysql2": "^3.22.6",
+    "nuxt": "3.21.8",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  }
+}
