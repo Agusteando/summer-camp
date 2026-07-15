@@ -104,7 +104,7 @@ watch(scopeSummaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(async () => {
   scope.initialize()
-  await summer.load('page-setup-mounted')
+  if (!summer.loadLifecycle.value.loadAttempted) await summer.load('page-setup-fallback')
   scope.reconcile(scopeSummaries.value)
 })
 </script>

@@ -1,1 +1,1 @@
-Corrige la carga agregada de alumnos y simplifica el diagnóstico técnico
+Implementa caché compartida y deduplicación de consultas para proteger Aurora

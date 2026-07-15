@@ -1,6 +1,7 @@
 import { verifyStudentAttendanceToken } from '../../../utils/tokens'
 import { assertSameOriginMutation, deviceLabel, readDeviceId } from '../../../utils/request'
 import { saveAttendanceBatch } from '../../../utils/summer-state'
+import { invalidateSummerSnapshotDates } from '../../../utils/summer-cache'
 import { isoDate, safeClientTimestamp } from '../../../utils/validation'
 import type { AttendanceMutation } from '~/types/summer'
 
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
   const deviceId = readDeviceId(event, mutations[0]?.deviceId)
   const accepted = await saveAttendanceBatch(mutations, plantelByMatricula, deviceId, deviceLabel(deviceId))
   const acceptedSet = new Set(accepted)
+  if (accepted.length) invalidateSummerSnapshotDates(new Set(mutations.filter((mutation) => acceptedSet.has(mutation.idempotencyKey)).map((mutation) => mutation.date)))
   return {
     accepted,
     rejected: requested.filter((mutation) => !acceptedSet.has(mutation.idempotencyKey)).map((mutation) => mutation.idempotencyKey),

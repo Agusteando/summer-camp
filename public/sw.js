@@ -1,5 +1,5 @@
-const BUILD_ID = 'summer-v12-aggregate-source'
-const CACHE = 'summer-camp-shell-v12'
+const BUILD_ID = 'summer-v13-shared-snapshot-cache'
+const CACHE = 'summer-camp-shell-v13'
 const CORE = [
   '/', '/attendance', '/setup', '/manifest.webmanifest', '/brand/iecs-iedis-logo.png',
   '/icons/dinos.png', '/icons/dinos-192.png', '/icons/dinos-512.png', '/icons/abejas.png', '/icons/leones.png', '/icons/tigres.png', '/icons/pandas.png',

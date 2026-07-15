@@ -18,8 +18,8 @@ export const useConnectivity = () => {
       return
     }
     try {
-      const result: any = await $fetch('/api/summer/health', { cache: 'no-store' })
-      sourceState.value = result?.source?.reachable ? 'online' : 'offline'
+      const result: any = await $fetch('/api/summer/health', { cache: 'default' })
+      sourceState.value = result?.source?.reachable === null || result?.source?.checking ? 'checking' : result?.source?.reachable ? 'online' : 'offline'
       sourceName.value = String(result?.source?.source || sourceName.value || 'aurora').toLowerCase()
       appState.value = result?.app?.reachable ? 'online' : 'offline'
       latencyMs.value = Number(result?.latencyMs || 0)

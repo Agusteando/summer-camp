@@ -1,6 +1,8 @@
 import type { AttendanceMutation, AttendanceStatus, ClientRequestDiagnostic, ClientTraceEvent, SnapshotResponse, SummerLoadLifecycle, SummerStudent } from '~/types/summer'
 
 let activeRefresh: Promise<boolean> | null = null
+let cacheFollowupTimer: ReturnType<typeof setTimeout> | null = null
+let cacheFollowupGeneration: string | null = null
 
 const localDate = () => {
   const now = new Date()
@@ -64,15 +66,15 @@ function validateSnapshot(value: unknown): asserts value is SnapshotResponse {
 }
 
 export const useSummerData = () => {
-  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-v12', () => null)
+  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-v13', () => null)
   const selectedDate = useState('summer-date', localDate)
-  const loading = useState('summer-loading-v12', () => false)
-  const updating = useState('summer-updating-v12', () => false)
-  const error = useState<string | null>('summer-error-v12', () => null)
-  const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic-v12', () => null)
-  const clientTrace = useState<ClientTraceEvent[]>('summer-client-trace-v12', () => [])
-  const lastUpdatedAt = useState<string | null>('summer-last-updated-v12', () => null)
-  const loadLifecycle = useState<SummerLoadLifecycle>('summer-load-lifecycle-v12', () => ({
+  const loading = useState('summer-loading-v13', () => false)
+  const updating = useState('summer-updating-v13', () => false)
+  const error = useState<string | null>('summer-error-v13', () => null)
+  const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic-v13', () => null)
+  const clientTrace = useState<ClientTraceEvent[]>('summer-client-trace-v13', () => [])
+  const lastUpdatedAt = useState<string | null>('summer-last-updated-v13', () => null)
+  const loadLifecycle = useState<SummerLoadLifecycle>('summer-load-lifecycle-v13', () => ({
     composableCreatedAt: new Date().toISOString(),
     clientMountedAt: null,
     clientMountedSources: [],
@@ -86,7 +88,7 @@ export const useSummerData = () => {
     lastLoadDurationMs: null,
     lastLoadError: null
   }))
-  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-v12', () => null)
+  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-v13', () => null)
   const queue = useAttendanceQueue()
   const device = useDeviceIdentity()
   const config = useRuntimeConfig()
@@ -95,7 +97,24 @@ export const useSummerData = () => {
     clientTrace.value = [...clientTrace.value.slice(-119), { at: new Date().toISOString(), event, ...(details === undefined ? {} : { details: safeDetails(details) }) }]
   }
 
-  const cacheKey = () => `summer-snapshot:v12:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:v13:${selectedDate.value}`
+
+  const scheduleCacheFollowup = (result: SnapshotResponse) => {
+    if (!import.meta.client) return
+    const generatedAt = String(result.meta.generatedAt || '')
+    const generatedTime = Date.parse(generatedAt)
+    const oldResponse = Number.isFinite(generatedTime) && Date.now() - generatedTime > 120000
+    const serverRefreshing = Boolean(result.meta.serverCache?.refreshing || result.meta.serverCache?.state === 'stale-while-revalidate')
+    if ((!oldResponse && !serverRefreshing) || !generatedAt || cacheFollowupGeneration === generatedAt) return
+    cacheFollowupGeneration = generatedAt
+    if (cacheFollowupTimer) clearTimeout(cacheFollowupTimer)
+    trace('cache.followup_scheduled', { generatedAt, oldResponse, serverRefreshing, delayMs: 12000 })
+    cacheFollowupTimer = setTimeout(() => {
+      cacheFollowupTimer = null
+      trace('cache.followup_started', { generatedAt })
+      void refresh(true)
+    }, 12000)
+  }
 
   const noteClientMounted = (source: string) => {
     if (!import.meta.client) return
@@ -203,12 +222,11 @@ export const useSummerData = () => {
 
       try {
         const result = await $fetch<SnapshotResponse>('/api/summer/snapshot', {
-          query: { date: selectedDate.value, _dx: Date.now() },
-          cache: 'no-store',
+          query: { date: selectedDate.value, clientBuild: String(config.public.buildId || 'unknown') },
+          cache: 'default',
           retry: 0,
           headers: {
             Accept: 'application/json',
-            'Cache-Control': 'no-cache',
             'X-Summer-Client-Build': String(config.public.buildId || 'unknown'),
             'X-Summer-Client-DX-Version': String(config.public.diagnosticVersion || 10)
           }
@@ -245,6 +263,7 @@ export const useSummerData = () => {
           trace('cache.saved', { key: cacheKey(), characters: serialized.length })
         }
         await applyPending()
+        scheduleCacheFollowup(result)
         if (import.meta.client) void queue.flush()
         trace('refresh.completed', { success: true, snapshotPresent: Boolean(snapshot.value), students: snapshot.value?.students.length || 0 })
         return true

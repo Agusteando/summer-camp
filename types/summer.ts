@@ -38,6 +38,26 @@ export type PlantelSummary = {
   pendingProgram: number
 }
 
+export type ServerCacheMeta = {
+  strategy: 'vercel-edge-plus-instance-singleflight'
+  state: 'miss' | 'fresh' | 'stale-while-revalidate' | 'stale-if-error'
+  refreshing: boolean
+  snapshotAgeMs: number
+  snapshotStoredAt: string | null
+  snapshotLastError: { name: string; message: string; code: string | null; statusCode: number | null; at: string } | null
+  sourceAgeMs: number | null
+  sourceStoredAt: string | null
+  sourceRefreshing: boolean
+  sourceLastError: { name: string; message: string; code: string | null; statusCode: number | null; at: string } | null
+  sourceFreshMs: number
+  sourceStaleMs: number
+  snapshotFreshMs: number
+  snapshotStaleMs: number
+  edgeFreshSeconds: number
+  edgeStaleSeconds: number
+  instanceId: string
+}
+
 export type SnapshotResponse = {
   date: string
   students: SummerStudent[]
@@ -55,6 +75,7 @@ export type SnapshotResponse = {
     sourcePlantelResults?: Array<{ plantel: string; ok: boolean; rowCount: number; latencyMs: number; meta: Record<string, unknown> | null; error: { plantel: string; name: string; message: string; code: string | null; statusCode: number | null; responseBody: string | null } | null }>
     sourceFailures?: Array<{ plantel: string; name: string; message: string; code: string | null; statusCode: number | null; responseBody: string | null }>
     cached?: boolean
+    serverCache?: ServerCacheMeta
     buildId?: string
     snapshotVersion?: number
     requestId?: string

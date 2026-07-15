@@ -156,7 +156,7 @@ const fetchFromAurora = async (): Promise<SourceResult> => {
   const started = Date.now()
 
   const trace: SummerSourceTrace = {
-    version: 12,
+    version: 13,
     startedAt: new Date(started).toISOString(),
     finishedAt: null,
     durationMs: null,

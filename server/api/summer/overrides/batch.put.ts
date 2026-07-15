@@ -1,5 +1,6 @@
 import { assertSameOriginMutation, readDeviceId } from '../../../utils/request'
 import { saveOverrides } from '../../../utils/summer-state'
+import { invalidateAllSummerSnapshots } from '../../../utils/summer-cache'
 import type { MealPlan, ProgramKind } from '~/types/summer'
 
 const programs = new Set<ProgramKind>(['unassigned', 'husky_dreamers', 'clinica_futbol'])
@@ -23,5 +24,6 @@ export default defineEventHandler(async (event) => {
   if (!items.length) throw createError({ statusCode: 400, message: 'No hay cambios válidos.' })
   const deviceId = readDeviceId(event, body?.deviceId)
   await saveOverrides(items, deviceId)
+  invalidateAllSummerSnapshots()
   return { ok: true, updated: items.length }
 })

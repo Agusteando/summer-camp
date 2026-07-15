@@ -26,7 +26,7 @@ const safeError = (cause: any) => ({
 })
 
 const payload = computed(() => ({
-  dxVersion: 12,
+  dxVersion: 13,
   buildId: String(config.public.buildId || 'unknown'),
   capturedAt: capturedAt.value,
   purpose: 'Diagnóstico temporal de carga. Es observacional y no dispara consultas adicionales contra Aurora.',
@@ -97,7 +97,9 @@ const scheduleRefresh = () => {
   refreshTimer = setTimeout(() => void refresh(), 250)
 }
 
-watch(() => summer.requestDiagnostic.value?.finishedAt, scheduleRefresh)
+watch(() => summer.requestDiagnostic.value?.finishedAt, () => {
+  if (hasFailure.value || !report.value) scheduleRefresh()
+})
 watch(hasFailure, (failed) => {
   if (failed) {
     nextTick(() => { if (details.value) details.value.open = true })
@@ -117,7 +119,7 @@ onBeforeUnmount(() => {
 <template>
   <details v-if="enabled" ref="details" class="dx-panel">
     <summary>
-      <span class="dx-panel__identity"><Bug :size="15" /> DX12 · Carga</span>
+      <span class="dx-panel__identity"><Bug :size="15" /> DX13 · Carga</span>
       <span :class="['dx-panel__status', hasFailure ? 'is-error' : 'is-ok']">
         {{ hasFailure ? 'Error capturado' : 'Sin falla activa' }}
       </span>

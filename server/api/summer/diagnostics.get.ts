@@ -3,6 +3,7 @@ import { appQuery } from '../../utils/db'
 import { serializeDiagnosticError } from '../../utils/diagnostic-error'
 import { resolveSummerPlantelConfiguration } from '../../utils/summer-config'
 import { getLastSummerSourceTrace } from '../../utils/summer-source-trace'
+import { getSummerCacheDiagnostics } from '../../utils/summer-cache'
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate')
@@ -15,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const started = Date.now()
   const plantelConfiguration = resolveSummerPlantelConfiguration()
   const sourceTrace = getLastSummerSourceTrace()
+  const cache = getSummerCacheDiagnostics()
   let appDatabase: Record<string, unknown>
   try {
     const rows = await appQuery<any[]>('SELECT DATABASE() AS databaseName, NOW() AS serverTime')
@@ -103,9 +105,12 @@ export default defineEventHandler(async (event) => {
       planteles: plantelConfiguration.resolved,
       auroraTimeoutMs: Math.max(60000, Number(config.auroraTimeoutMs || 60000)),
       expectedAuroraQueryVersion: 3,
-      expectedAuroraQueryStrategy: 'single-union-direct-concept'
+      expectedAuroraQueryStrategy: 'single-union-direct-concept',
+      cacheStrategy: cache.strategy,
+      cacheDurations: cache.durations
     },
     appDatabase,
+    cache,
     sourceTrace,
     findings
   }
