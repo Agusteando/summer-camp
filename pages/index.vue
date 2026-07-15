@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { CalendarDays, CheckCircle2, CloudOff, MapPin, School2, UsersRound } from '@lucide/vue'
 import { AGE_GROUPS, plantelSortIndex } from '~/shared/catalog'
-import type { CampusName, PlantelSummary, SummerStudent } from '~/types/summer'
+import type { CampusName, PlantelSummary, ProgramKind, SummerStudent } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
 const scope = useSummerScope()
 const search = ref('')
 const group = ref('all')
-const program = ref('all')
+const program = ref<'all' | ProgramKind>('all')
 
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
 const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('es-MX'))
@@ -73,6 +73,7 @@ const scopeLabel = computed(() => {
 
 const setCampus = (campus: 'all' | CampusName) => scope.setCampus(campus, summaries.value)
 const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
+const setProgram = (value: 'all' | ProgramKind) => { program.value = value }
 const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
 
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
@@ -110,11 +111,14 @@ onMounted(async () => {
 
     <template v-if="summer.snapshot.value">
       <SummaryCards
+        :students="summer.snapshot.value.students"
         :summaries="summaries"
         :selected-campus="scope.campus.value"
         :selected-plantel="scope.plantel.value"
+        :selected-program="program"
         @campus="setCampus"
         @plantel="setPlantel"
+        @program="setProgram"
       />
       <FilterDock
         v-model:search="search"

@@ -1,1 +1,1 @@
-Separa alumnos por campus y añade filtros rápidos por plantel
+Elimina SSL de MySQL y agrega cuatro KPI por campus y modalidad
