@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { PLANTEL_ORDER, campusForPlantel } from '~/shared/catalog'
+import { resolveSummerPlantelConfiguration } from './summer-config'
 
 const clean = (value: unknown, max = 4000) => String(value ?? '').trim().slice(0, max)
 const normalizeMatricula = (value: unknown) => clean(value, 64).toUpperCase().replace(/\s+/g, '')
@@ -320,9 +321,9 @@ export const diagnoseAuroraEnrollment = async () => {
   const year = clean(config.summerYear || '2026', 20)
   const cycle = clean(config.summerCycle || '2026', 40)
   const concepts = String(config.summerConceptIds || '986,987,988').split(',').map(Number).filter(Number.isFinite)
-  const configuredPlanteles = String(config.summerPlanteles || PLANTEL_ORDER.join(','))
-    .split(',').map((value) => clean(value, 40).toUpperCase()).filter(Boolean)
-  const timeoutMs = Math.max(1000, Number(config.auroraTimeoutMs || 12000))
+  const plantelConfiguration = resolveSummerPlantelConfiguration()
+  const configuredPlanteles = plantelConfiguration.resolved
+  const timeoutMs = Math.max(25000, Number(config.auroraTimeoutMs || 25000))
 
   let parsedBase: URL | null = null
   let baseUrlError: string | null = null
@@ -343,8 +344,11 @@ export const diagnoseAuroraEnrollment = async () => {
     cycle,
     concepts,
     conceptsExactlyExpected: concepts.length === 3 && [986, 987, 988].every((id) => concepts.includes(id)),
+    configuredPlantelesRaw: plantelConfiguration.raw,
     configuredPlanteles,
     configuredPlantelCount: configuredPlanteles.length,
+    supportedFinancialPlanteles: plantelConfiguration.supported,
+    plantelConfigurationCorrections: plantelConfiguration.corrections,
     duplicatePlanteles: configuredPlanteles.filter((plantel, index) => configuredPlanteles.indexOf(plantel) !== index),
     unknownAgainstLocalCatalog: configuredPlanteles.filter((plantel) => !PLANTEL_ORDER.includes(plantel as any)),
     campusMapping: configuredPlanteles.reduce<Record<string, string>>((acc, plantel) => { acc[plantel] = campusForPlantel(plantel); return acc }, {}),
@@ -439,6 +443,19 @@ export const diagnoseAuroraEnrollment = async () => {
 
   const findings: Array<{ severity: 'error' | 'warning' | 'info'; code: string; message: string; evidence?: unknown }> = []
   const allExposedBranchFailures = [...serverDiagnosticBranchFailures, ...studentEndpointBranchFailures]
+  if (plantelConfiguration.corrections.length) findings.push({
+    severity: 'warning',
+    code: 'SUMMER_PLANTEL_CONFIGURATION_CORRECTED',
+    message: 'Se corrigió la lista de agentes antes de probar Aurora. PREET se reemplaza por CT cuando era el alias antiguo y se omiten códigos sin agente financiero.',
+    evidence: plantelConfiguration
+  })
+  const documentPlantelFailures = allExposedBranchFailures.filter((failure: any) => String(failure?.error?.message || '').includes("Unknown column 'D.plantel'"))
+  if (documentPlantelFailures.length) findings.push({
+    severity: 'error',
+    code: 'AURORA_CHARGED_QUERY_REFERENCES_MISSING_D_PLANTEL',
+    message: "La consulta charged de Aurora referencia D.plantel, una columna inexistente en documentos. El plantel debe salir de base B o del agente solicitado.",
+    evidence: documentPlantelFailures
+  })
   if (allExposedBranchFailures.length) findings.push({
     severity: 'error',
     code: 'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',

@@ -48,6 +48,10 @@ export type SnapshotResponse = {
     sourceReachable: boolean
     partial: boolean
     failedPlanteles: string[]
+    requestedPlanteles?: string[]
+    successfulPlanteles?: string[]
+    emptyPlanteles?: string[]
+    configurationCorrections?: Array<{ input: string; output: string | null; reason: string }>
     cached?: boolean
     buildId?: string
     snapshotVersion?: number

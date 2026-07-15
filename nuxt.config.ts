@@ -16,40 +16,40 @@ export default defineNuxtConfig({
       ],
       script: [
         {
-          key: 'summer-stability-preboot-v10',
+          key: 'summer-stability-preboot-v11',
           innerHTML: `(() => {
-            const state = { buildId: 'summer-v10-stability', startedAt: new Date().toISOString(), finishedAt: null, serviceWorkersFound: 0, serviceWorkersUnregistered: 0, cachesFound: [], cachesDeleted: [], legacySnapshotsDeleted: [], errors: [] };
+            const state = { buildId: 'summer-v11-source-fix', startedAt: new Date().toISOString(), finishedAt: null, serviceWorkersFound: 0, serviceWorkersUnregistered: 0, cachesFound: [], cachesDeleted: [], legacySnapshotsDeleted: [], errors: [] };
             window.__SUMMER_PREBOOT__ = state;
             const jobs = [];
             try {
               if ('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistrations().then(async (registrations) => {
                 state.serviceWorkersFound = registrations.length;
-                const obsolete = registrations.filter((registration) => ![registration.active, registration.waiting, registration.installing].some((worker) => worker?.scriptURL?.includes('/sw.js?v=10')));
+                const obsolete = registrations.filter((registration) => ![registration.active, registration.waiting, registration.installing].some((worker) => worker?.scriptURL?.includes('/sw.js?v=11')));
                 const results = await Promise.allSettled(obsolete.map((registration) => registration.unregister()));
                 state.serviceWorkersUnregistered = results.filter((result) => result.status === 'fulfilled' && result.value === true).length;
               }).catch((error) => state.errors.push({ stage: 'service-workers', message: String(error?.message || error) })));
               if ('caches' in window) jobs.push(caches.keys().then(async (names) => {
                 state.cachesFound = names;
-                const obsolete = names.filter((name) => name.startsWith('summer-camp-shell-') && name !== 'summer-camp-shell-v10');
+                const obsolete = names.filter((name) => name.startsWith('summer-camp-shell-') && name !== 'summer-camp-shell-v11');
                 const results = await Promise.allSettled(obsolete.map(async (name) => ({ name, deleted: await caches.delete(name) })));
                 state.cachesDeleted = results.filter((result) => result.status === 'fulfilled' && result.value.deleted).map((result) => result.value.name);
               }).catch((error) => state.errors.push({ stage: 'cache-storage', message: String(error?.message || error) })));
               try {
                 const keys = Object.keys(localStorage);
                 for (const key of keys) {
-                  if (/^summer-snapshot:v(?:[1-9]):/.test(key)) { localStorage.removeItem(key); state.legacySnapshotsDeleted.push(key); }
+                  if (/^summer-snapshot:v(?:[1-9]|10):/.test(key)) { localStorage.removeItem(key); state.legacySnapshotsDeleted.push(key); }
                 }
               } catch (error) { state.errors.push({ stage: 'local-storage', message: String(error?.message || error) }); }
             } catch (error) { state.errors.push({ stage: 'preboot', message: String(error?.message || error) }); }
             Promise.allSettled(jobs).finally(() => {
               state.finishedAt = new Date().toISOString();
               const needsCleanReload = state.serviceWorkersUnregistered > 0 || state.cachesDeleted.length > 0;
-              const guardKey = 'summer-v10-clean-reload';
+              const guardKey = 'summer-v11-clean-reload';
               if (needsCleanReload && !sessionStorage.getItem(guardKey)) {
                 sessionStorage.setItem(guardKey, state.finishedAt);
                 state.reloadScheduled = true;
                 const next = new URL(window.location.href);
-                next.searchParams.set('__summer_build', 'v10');
+                next.searchParams.set('__summer_build', 'v11');
                 window.location.replace(next.toString());
                 return;
               }
@@ -71,11 +71,11 @@ export default defineNuxtConfig({
     summerYear: process.env.SUMMER_YEAR || '2026',
     summerCycle: process.env.SUMMER_CYCLE || '2026',
     summerConceptIds: process.env.SUMMER_CONCEPT_IDS || '986,987,988',
-    summerPlanteles: process.env.SUMMER_PLANTELES || 'PREEM,PREET,CT,CM,DM,CO,DC,GM,PM,PT,SM,ST,IS,ISM',
+    summerPlanteles: process.env.SUMMER_PLANTELES || 'CT,PT,ST,PREEM,GM,PM,SM',
     summerSourceMode: process.env.SUMMER_SOURCE_MODE || 'aurora',
     auroraBaseUrl: process.env.AURORA_BASE_URL,
     auroraApiToken: process.env.AURORA_API_TOKEN,
-    auroraTimeoutMs: process.env.AURORA_TIMEOUT_MS || '12000',
+    auroraTimeoutMs: process.env.AURORA_TIMEOUT_MS || '25000',
     appMysqlHost: process.env.APP_MYSQL_HOST,
     appMysqlPort: process.env.APP_MYSQL_PORT || '3306',
     appMysqlUser: process.env.APP_MYSQL_USER,
@@ -93,8 +93,8 @@ export default defineNuxtConfig({
       refreshIntervalMs: Number(process.env.NUXT_PUBLIC_REFRESH_INTERVAL_MS || 120000),
       healthIntervalMs: Number(process.env.NUXT_PUBLIC_HEALTH_INTERVAL_MS || 45000),
       appVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'local',
-      buildId: 'summer-v10-stability',
-      diagnosticVersion: 10,
+      buildId: 'summer-v11-source-fix',
+      diagnosticVersion: 11,
       diagnosticsEnabled: process.env.NUXT_PUBLIC_SUMMER_DIAGNOSTICS !== 'false'
     }
   },

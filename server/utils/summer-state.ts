@@ -3,7 +3,7 @@ import { createStudentAttendanceToken, createStudentPhotoToken } from './tokens'
 import { ageFromCurp } from '~/shared/curp'
 import { ageGroupFor, campusForPlantel, mealCountFromConcept, mealPlanFromConcept, plantelSortIndex, PLANTEL_LABELS } from '~/shared/catalog'
 import type { AttendanceMutation, MealPlan, ProgramKind, SnapshotResponse, SummerStudent } from '~/types/summer'
-import type { SourceStudent } from './summer-source'
+import type { SourceResult, SourceStudent } from './summer-source'
 
 const demoOverrides = new Map<string, { program: ProgramKind; mealPlan: MealPlan | null; ageOverride: number | null }>()
 const demoAttendance = new Map<string, { status: 'present' | 'absent'; updatedAt: string; plantel: string }>()
@@ -56,7 +56,7 @@ export const loadAttendance = async (date: string, matriculas: string[]) => {
   return result
 }
 
-export const buildSnapshot = async (date: string, sourceStudents: SourceStudent[], sourceMeta: { source: string; reachable: boolean; partial: boolean; failedPlanteles: string[] }): Promise<SnapshotResponse> => {
+export const buildSnapshot = async (date: string, sourceStudents: SourceStudent[], sourceMeta: SourceResult): Promise<SnapshotResponse> => {
   const visible = sourceStudents
   const matriculas = visible.map((student) => student.matricula)
   const [overrides, attendance] = await Promise.all([loadOverrides(matriculas), loadAttendance(date, matriculas)])
@@ -122,7 +122,11 @@ export const buildSnapshot = async (date: string, sourceStudents: SourceStudent[
       source: sourceMeta.source,
       sourceReachable: sourceMeta.reachable,
       partial: sourceMeta.partial,
-      failedPlanteles: sourceMeta.failedPlanteles
+      failedPlanteles: sourceMeta.failedPlanteles,
+      requestedPlanteles: sourceMeta.requestedPlanteles,
+      successfulPlanteles: sourceMeta.successfulPlanteles,
+      emptyPlanteles: sourceMeta.emptyPlanteles,
+      configurationCorrections: sourceMeta.configurationCorrections
     }
   }
 }

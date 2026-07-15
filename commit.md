@@ -1,1 +1,1 @@
-fix: aislar la carga de alumnos y completar el diagnóstico DX10
+fix: corregir agentes financieros y conservar resultados parciales de Aurora

@@ -2,6 +2,7 @@ import { SUMMER_BUILD_ID, SUMMER_DX_VERSION, SUMMER_SNAPSHOT_VERSION } from '../
 import { appQuery } from '../../utils/db'
 import { serializeDiagnosticError } from '../../utils/diagnostic-error'
 import { diagnoseAuroraEnrollment } from '../../utils/summer-source-diagnostics'
+import { resolveSummerPlantelConfiguration } from '../../utils/summer-config'
 import { loadSummerSource, testSourceHealth } from '../../utils/summer-source'
 import { buildSnapshot, loadAttendance, loadOverrides } from '../../utils/summer-state'
 import { isoDate } from '../../utils/validation'
@@ -44,7 +45,8 @@ export default defineEventHandler(async (event) => {
   const date = isoDate(getQuery(event).date, today)!
   const sourceMode = String(config.summerSourceMode || 'aurora').toLowerCase()
   const concepts = String(config.summerConceptIds || '986,987,988').split(',').map(Number).filter(Number.isFinite)
-  const planteles = String(config.summerPlanteles || '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean)
+  const plantelConfiguration = resolveSummerPlantelConfiguration()
+  const planteles = plantelConfiguration.resolved
   const checks: Check[] = []
 
   const run = async <T>(key: string, label: string, task: () => Promise<T>): Promise<T | null> => {
@@ -94,15 +96,19 @@ export default defineEventHandler(async (event) => {
     cycle: String(config.summerCycle || '2026'),
     conceptIds: concepts,
     conceptsExactlyExpected: concepts.length === 3 && [986, 987, 988].every((idValue) => concepts.includes(idValue)),
+    configuredPlantelesRaw: plantelConfiguration.raw,
     configuredPlanteles: planteles,
     configuredPlantelCount: planteles.length,
+    supportedFinancialPlanteles: plantelConfiguration.supported,
+    plantelConfigurationCorrections: plantelConfiguration.corrections,
     auroraBaseUrlConfigured: Boolean(auroraBaseUrl),
     auroraOrigin: (() => { try { const url = new URL(auroraBaseUrl); return `${url.protocol}//${url.host}` } catch { return null } })(),
     auroraStudentsEndpoint: safeEndpoint('/api/external/v1/summer/students'),
     auroraDiagnosticsEndpoint: safeEndpoint('/api/external/v1/summer/diagnostics'),
     auroraHealthEndpoint: safeEndpoint('/api/external/v1/summer/health'),
     auroraApiTokenConfigured: Boolean(String(config.auroraApiToken || '').trim()),
-    auroraTimeoutMs: Number(config.auroraTimeoutMs || 12000),
+    auroraTimeoutMsConfigured: Number(config.auroraTimeoutMs || 25000),
+    auroraTimeoutMsEffective: Math.max(25000, Number(config.auroraTimeoutMs || 25000)),
     appMysqlConfigured: Boolean(config.appMysqlHost && config.appMysqlUser && config.appMysqlDatabase),
     diagnosticsEnabled: true
   }
@@ -158,8 +164,13 @@ export default defineEventHandler(async (event) => {
       source: diagnosticState.sourceResult.source,
       sourceReachable: diagnosticState.sourceResult.reachable,
       partial: diagnosticState.sourceResult.partial,
+      requestedPlanteles: diagnosticState.sourceResult.requestedPlanteles,
+      successfulPlanteles: diagnosticState.sourceResult.successfulPlanteles,
+      emptyPlanteles: diagnosticState.sourceResult.emptyPlanteles,
       failedPlanteles: diagnosticState.sourceResult.failedPlanteles,
       failures: diagnosticState.sourceResult.failures,
+      plantelResults: diagnosticState.sourceResult.plantelResults,
+      configurationCorrections: diagnosticState.sourceResult.configurationCorrections,
       totalAfterNormalizationAndDeduplication: students.length,
       byPlantel,
       byConcept,
@@ -283,6 +294,46 @@ export default defineEventHandler(async (event) => {
       evidence: { sourceHealth }
     })
   }
+  if (plantelConfiguration.corrections.length) {
+    findings.push({
+      severity: 'warning' as const,
+      code: 'SUMMER_PLANTEL_CONFIGURATION_CORRECTED',
+      message: 'La lista de agentes financieros fue corregida antes de consultar Aurora. PREET no es el agente financiero de Toluca; se usa CT, y se omiten códigos que no pertenecen al catálogo financiero actual.',
+      evidence: plantelConfiguration
+    })
+  }
+  const exposedBranchFailures = auroraInspection?.aggregate?.deepDiagnostics?.branchFailures || 0
+  const branchFailureRows = auroraInspection?.findings?.find((finding: any) => finding.code === 'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED')?.evidence || []
+  const documentPlantelFailures = Array.isArray(branchFailureRows) ? branchFailureRows.filter((failure: any) => String(failure?.error?.message || '').includes("Unknown column 'D.plantel'")) : []
+  if (documentPlantelFailures.length) {
+    findings.push({
+      severity: 'error' as const,
+      code: 'AURORA_CHARGED_QUERY_REFERENCES_MISSING_D_PLANTEL',
+      message: "La rama charged de Aurora consulta D.plantel, pero la tabla documentos no tiene esa columna. Debe usar B.plantel o el plantel solicitado.",
+      evidence: documentPlantelFailures
+    })
+  }
+  const offlineAgents = (auroraInspection?.serverDiagnostics || []).filter((probe: any) => [probe?.payload?.error?.code, probe?.payload?.queryDiagnostics?.paid?.error?.code, probe?.payload?.queryDiagnostics?.charged?.error?.code].some((code) => String(code || '').includes('AGENT_OFFLINE'))).map((probe: any) => probe.plantel)
+  if (offlineAgents.length) findings.push({
+    severity: 'warning' as const,
+    code: 'AURORA_BRIDGE_AGENTS_OFFLINE',
+    message: 'Uno o más agentes Bridge están fuera de línea. La lista debe seguir cargando los planteles que sí respondan y marcar el resultado como parcial.',
+    evidence: { offlineAgents }
+  })
+  const observedLatencies = (auroraInspection?.probes || []).map((probe: any) => Number(probe?.transport?.latencyMs || 0)).filter((value: number) => value > 0)
+  const maxObservedLatency = observedLatencies.length ? Math.max(...observedLatencies) : 0
+  if (maxObservedLatency >= Math.max(25000, Number(config.auroraTimeoutMs || 25000)) * 0.85) findings.push({
+    severity: 'warning' as const,
+    code: 'AURORA_TIMEOUT_MARGIN_LOW',
+    message: 'La latencia observada está demasiado cerca del timeout configurado; una variación pequeña convierte respuestas válidas en AbortError.',
+    evidence: { configuredTimeoutMs: Number(config.auroraTimeoutMs || 25000), effectiveTimeoutMs: Math.max(25000, Number(config.auroraTimeoutMs || 25000)), maxObservedLatency }
+  })
+  if (exposedBranchFailures && auroraInspection?.aggregate?.totalRawRows) findings.push({
+    severity: 'warning' as const,
+    code: 'AURORA_PARTIAL_ROWS_EXIST_DESPITE_QUERY_ERRORS',
+    message: 'Aurora sí devolvió matrículas válidas en algunos planteles aunque otras ramas o agentes fallaron. Summer Camp debe conservar esas filas y continuar con una lista parcial.',
+    evidence: { totalRawRows: auroraInspection.aggregate.totalRawRows, nonEmptyPlanteles: auroraInspection.aggregate.nonEmptyPlanteles }
+  })
   if (auroraInspection?.aggregate?.totalRawRows && !sourceLoaderCheck?.ok) {
     findings.push({
       severity: 'error' as const,
@@ -377,6 +428,7 @@ export default defineEventHandler(async (event) => {
   const failureBoundary = failureBoundaryIndex >= 0 ? boundaries[failureBoundaryIndex] : null
   const previousBoundary = failureBoundaryIndex > 0 ? boundaries[failureBoundaryIndex - 1] : null
   const preciseFinding = findings.find((finding) => [
+    'AURORA_CHARGED_QUERY_REFERENCES_MISSING_D_PLANTEL',
     'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',
     'AURORA_QUERIES_OK_ZERO_STUDENTS',
     'AURORA_DEEP_DIAGNOSTICS_UNAUTHORIZED',

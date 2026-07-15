@@ -25,8 +25,13 @@ export default defineEventHandler(async (event) => {
         source: source.source,
         reachable: source.reachable,
         partial: source.partial,
+        requestedPlanteles: source.requestedPlanteles,
+        successfulPlanteles: source.successfulPlanteles,
+        emptyPlanteles: source.emptyPlanteles,
         failedPlanteles: source.failedPlanteles,
         failures: source.failures,
+        plantelResults: source.plantelResults,
+        configurationCorrections: source.configurationCorrections,
         students: 0
       }
       throw error

@@ -9,6 +9,10 @@ const sourceLabel = computed(() => {
   if (sourceName.value === 'demo') return 'Demo'
   return 'Aurora'
 })
+const failedPlantelLabel = computed(() => {
+  const failed = snapshot.value?.meta.failedPlanteles || []
+  return failed.length ? `Datos parciales · faltan ${failed.join(', ')}` : ''
+})
 const cachedTime = computed(() => {
   const value = snapshot.value?.meta.generatedAt
   if (!value) return ''
@@ -46,7 +50,11 @@ const cachedTime = computed(() => {
         </button>
       </div>
     </div>
-    <div v-if="snapshot?.meta.cached" class="cache-ribbon">
+    <div v-if="snapshot?.meta.partial" class="cache-ribbon">
+      <CloudOff :size="14" />
+      <span>{{ failedPlantelLabel }}</span>
+    </div>
+    <div v-else-if="snapshot?.meta.cached" class="cache-ribbon">
       <LoaderCircle v-if="updating" :size="14" class="spin" />
       <Clock3 v-else :size="14" />
       <span>{{ updating ? 'Actualizando datos guardados' : `Datos guardados · ${cachedTime}` }}</span>

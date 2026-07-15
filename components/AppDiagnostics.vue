@@ -17,17 +17,17 @@ type DxExecution = {
 }
 
 const config = useRuntimeConfig()
-const CLIENT_BUILD_ID = 'summer-v10-stability'
-const CLIENT_DX_VERSION = 10
+const CLIENT_BUILD_ID = 'summer-v11-source-fix'
+const CLIENT_DX_VERSION = 11
 const route = useRoute()
 const summer = useSummerData()
 const connectivity = useConnectivity()
-const report = useState<SummerDiagnosticsResponse | null>('summer-diagnostic-report-v10', () => null)
-const loading = useState('summer-diagnostic-loading-v10', () => false)
-const fetchError = useState<string | null>('summer-diagnostic-fetch-error-v10', () => null)
-const rawProbes = useState<Record<string, any> | null>('summer-diagnostic-raw-probes-v10', () => null)
-const browserContext = useState<Record<string, unknown> | null>('summer-diagnostic-browser-context-v10', () => null)
-const execution = useState<DxExecution>('summer-diagnostic-execution-v10', () => ({
+const report = useState<SummerDiagnosticsResponse | null>('summer-diagnostic-report-v11', () => null)
+const loading = useState('summer-diagnostic-loading-v11', () => false)
+const fetchError = useState<string | null>('summer-diagnostic-fetch-error-v11', () => null)
+const rawProbes = useState<Record<string, any> | null>('summer-diagnostic-raw-probes-v11', () => null)
+const browserContext = useState<Record<string, unknown> | null>('summer-diagnostic-browser-context-v11', () => null)
+const execution = useState<DxExecution>('summer-diagnostic-execution-v11', () => ({
   status: 'idle',
   attempt: 0,
   runId: null,
@@ -190,7 +190,7 @@ const collectBrowserContext = async () => {
   const registrations = registrationResult.value
   const storage = (() => {
     try {
-      const currentKey = `summer-snapshot:v10:${summer.selectedDate.value}`
+      const currentKey = `summer-snapshot:v11:${summer.selectedDate.value}`
       return {
         currentSnapshotKey: currentKey,
         currentSnapshotCharacters: localStorage.getItem(currentKey)?.length || 0,
@@ -312,7 +312,7 @@ const reportPayload = computed(() => ({
     serverDiagnosticParsed: Boolean(report.value),
     diagnosticFetchErrorCaptured: Boolean(fetchError.value),
     copyActionWaitsForCompleteRun: true,
-    staleDx8ReportRejectedByVersion: true,
+    staleReportRejectedByVersion: true,
     readyForCopy: diagnosticComplete.value
   },
   visibleProblem: {
@@ -357,7 +357,7 @@ const stringifyReport = (value: unknown) => {
 const formatted = computed(() => stringifyReport(reportPayload.value))
 const displayedJson = computed(() => copyPayloadReady.value
   ? formatted.value
-  : 'DX10 aún está ejecutando o no ha iniciado. Usa “Ejecutar y copiar todo”; el JSON incompleto no se puede seleccionar.')
+  : 'DX11 aún está ejecutando o no ha iniciado. Usa “Ejecutar y copiar todo”; el JSON incompleto no se puede seleccionar.')
 
 const unwrapDiagnostics = (payload: any) => {
   const candidates = [payload, payload?.data, payload?.data?.data]
@@ -548,7 +548,7 @@ onBeforeUnmount(() => { if (autoTimer) clearTimeout(autoTimer) })
       <summary>
         <span class="diagnostic-panel__icon"><Bug :size="16" /></span>
         <span class="diagnostic-panel__title">
-          <strong>DX10 · Carga de alumnos</strong>
+          <strong>DX11 · Carga de alumnos</strong>
           <small v-if="loading">{{ execution.stage }} · {{ execution.runId || 'preparando' }}</small>
           <small v-else-if="primaryFinding">{{ primaryFinding.code }} · {{ primaryFinding.message }}</small>
           <small v-else-if="!loadAttempted">Esperando la primera carga del cliente</small>
