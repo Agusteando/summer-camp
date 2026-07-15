@@ -9,6 +9,8 @@ export default defineEventHandler(async (event) => {
   const today = new Date().toISOString().slice(0, 10)
   const date = isoDate(getQuery(event).date, today)!
   const requestId = `snapshot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  setResponseHeader(event, 'X-Summer-Request-Id', requestId)
+  setResponseHeader(event, 'X-Summer-Snapshot-Version', '9')
   let stage = 'source_students'
 
   try {
@@ -28,6 +30,9 @@ export default defineEventHandler(async (event) => {
     }
     stage = 'snapshot_pipeline'
     const snapshot = await buildSnapshot(date, source.students, source)
+    setResponseHeader(event, 'X-Summer-Source', source.source)
+    setResponseHeader(event, 'X-Summer-Source-Students', String(source.students.length))
+    setResponseHeader(event, 'X-Summer-Source-Partial', String(source.partial))
     if (!snapshot || !Array.isArray(snapshot.students) || !Array.isArray(snapshot.summaries)) {
       const error: any = new Error('La construcción de la lista terminó con una respuesta inválida.')
       error.code = 'SUMMER_SNAPSHOT_INVALID'

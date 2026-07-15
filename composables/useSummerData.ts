@@ -1,4 +1,4 @@
-import type { AttendanceMutation, AttendanceStatus, ClientRequestDiagnostic, ClientTraceEvent, SnapshotResponse, SummerStudent } from '~/types/summer'
+import type { AttendanceMutation, AttendanceStatus, ClientRequestDiagnostic, ClientTraceEvent, SnapshotResponse, SummerLoadLifecycle, SummerStudent } from '~/types/summer'
 
 let activeRefresh: Promise<boolean> | null = null
 
@@ -72,6 +72,20 @@ export const useSummerData = () => {
   const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic', () => null)
   const clientTrace = useState<ClientTraceEvent[]>('summer-client-trace', () => [])
   const lastUpdatedAt = useState<string | null>('summer-last-updated', () => null)
+  const loadLifecycle = useState<SummerLoadLifecycle>('summer-load-lifecycle', () => ({
+    composableCreatedAt: new Date().toISOString(),
+    clientMountedAt: null,
+    clientMountedSources: [],
+    loadAttempted: false,
+    loadCallCount: 0,
+    firstLoadRequestedAt: null,
+    lastLoadRequestedAt: null,
+    lastLoadFinishedAt: null,
+    lastLoadTrigger: null,
+    lastLoadOutcome: 'idle',
+    lastLoadDurationMs: null,
+    lastLoadError: null
+  }))
   const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller', () => null)
   const queue = useAttendanceQueue()
   const device = useDeviceIdentity()
@@ -81,7 +95,18 @@ export const useSummerData = () => {
     clientTrace.value = [...clientTrace.value.slice(-119), { at: new Date().toISOString(), event, ...(details === undefined ? {} : { details: safeDetails(details) }) }]
   }
 
-  const cacheKey = () => `summer-snapshot:v8:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:v9:${selectedDate.value}`
+
+  const noteClientMounted = (source: string) => {
+    if (!import.meta.client) return
+    const cleanSource = String(source || 'unknown').slice(0, 80)
+    loadLifecycle.value = {
+      ...loadLifecycle.value,
+      clientMountedAt: loadLifecycle.value.clientMountedAt || new Date().toISOString(),
+      clientMountedSources: Array.from(new Set([...loadLifecycle.value.clientMountedSources, cleanSource])).slice(-12)
+    }
+    trace('client.mounted', { source: cleanSource, documentReadyState: document.readyState })
+  }
 
   const recalculateSummaries = () => {
     if (!snapshot.value) return
@@ -248,27 +273,57 @@ export const useSummerData = () => {
     }
   }
 
-  const load = async () => {
-    trace('load.started', { selectedDate: selectedDate.value, loading: loading.value, updating: updating.value, hasSnapshot: Boolean(snapshot.value) })
-    device.get()
-    if (!activeRefresh && (loading.value || updating.value)) {
-      trace('load.cleared_orphan_flags', { loading: loading.value, updating: updating.value })
-      loading.value = false
-      updating.value = false
+  const load = async (trigger = 'unspecified') => {
+    const requestedAt = new Date().toISOString()
+    const started = Date.now()
+    loadLifecycle.value = {
+      ...loadLifecycle.value,
+      loadAttempted: true,
+      loadCallCount: loadLifecycle.value.loadCallCount + 1,
+      firstLoadRequestedAt: loadLifecycle.value.firstLoadRequestedAt || requestedAt,
+      lastLoadRequestedAt: requestedAt,
+      lastLoadFinishedAt: null,
+      lastLoadTrigger: String(trigger || 'unspecified').slice(0, 120),
+      lastLoadOutcome: 'running',
+      lastLoadDurationMs: null,
+      lastLoadError: null
     }
-    const painted = await paintCache()
-    await queue.refreshCount()
-    trace('load.before_refresh', { cachePainted: painted, pendingCount: queue.pendingCount.value })
-    const success = await refresh(painted)
-    trace('load.completed', { success, cachePainted: painted, hasSnapshot: Boolean(snapshot.value), students: snapshot.value?.students.length || 0, error: error.value })
-    return success
+    trace('load.started', { trigger, selectedDate: selectedDate.value, loading: loading.value, updating: updating.value, hasSnapshot: Boolean(snapshot.value) })
+    let success = false
+    try {
+      device.get()
+      if (!activeRefresh && (loading.value || updating.value)) {
+        trace('load.cleared_orphan_flags', { loading: loading.value, updating: updating.value })
+        loading.value = false
+        updating.value = false
+      }
+      const painted = await paintCache()
+      await queue.refreshCount()
+      trace('load.before_refresh', { trigger, cachePainted: painted, pendingCount: queue.pendingCount.value })
+      success = await refresh(painted)
+      trace('load.completed', { trigger, success, cachePainted: painted, hasSnapshot: Boolean(snapshot.value), students: snapshot.value?.students.length || 0, error: error.value })
+      return success
+    } catch (cause: any) {
+      const message = cause?.data?.message || cause?.message || String(cause)
+      error.value = error.value || message || 'No se pudo cargar la lista.'
+      trace('load.unhandled_error', { trigger, message, name: cause?.name || null, stack: cause?.stack || null })
+      return false
+    } finally {
+      loadLifecycle.value = {
+        ...loadLifecycle.value,
+        lastLoadFinishedAt: new Date().toISOString(),
+        lastLoadOutcome: success && Boolean(snapshot.value) ? 'success' : 'failure',
+        lastLoadDurationMs: Date.now() - started,
+        lastLoadError: success && snapshot.value ? null : error.value || 'La carga terminó sin snapshot.'
+      }
+    }
   }
 
   const setDate = async (date: string) => {
     trace('date.changed', { from: selectedDate.value, to: date })
     selectedDate.value = date
     snapshot.value = null
-    await load()
+    await load('date-change')
   }
 
   const markAttendance = async (student: SummerStudent, status: Exclude<AttendanceStatus, 'unmarked'>) => {
@@ -324,10 +379,12 @@ export const useSummerData = () => {
     error,
     requestDiagnostic,
     clientTrace,
+    loadLifecycle,
     lastUpdatedAt,
     pendingCount: queue.pendingCount,
     flushing: queue.flushing,
     load,
+    noteClientMounted,
     refresh,
     setDate,
     markAttendance,

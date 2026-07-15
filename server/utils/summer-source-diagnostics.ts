@@ -171,6 +171,10 @@ const probeAuroraPlantel = async (options: {
         contentType: response.headers.get('content-type'),
         contentLengthHeader: response.headers.get('content-length'),
         cacheControl: response.headers.get('cache-control'),
+        serverHeader: response.headers.get('server'),
+        poweredByHeader: response.headers.get('x-powered-by'),
+        responseDate: response.headers.get('date'),
+        requestIdHeader: response.headers.get('x-request-id') || response.headers.get('x-vercel-id'),
         bodyCharacters: body.length,
         bodySha256: createHash('sha256').update(body).digest('hex').slice(0, 16),
         bodyPreview: !response.ok || parseError || (dataIsArray && rows.length === 0) || arraysDiscovered.every((entry) => entry.length === 0)
@@ -190,7 +194,10 @@ const probeAuroraPlantel = async (options: {
         metaPlantel: clean(meta?.plantel, 40).toUpperCase() || null,
         metaCycle: clean(meta?.cycle, 40) || null,
         metaConcepts: Array.isArray(meta?.concepts) ? meta.concepts : null,
-        metaTotalMatchesData: numberOrNull(meta?.total) === null ? null : Number(meta.total) === rows.length
+        metaTotalMatchesData: numberOrNull(meta?.total) === null ? null : Number(meta.total) === rows.length,
+        metaPlantelMatchesRequest: clean(meta?.plantel, 40).toUpperCase() ? clean(meta?.plantel, 40).toUpperCase() === plantel : null,
+        metaCycleMatchesRequest: clean(meta?.cycle, 40) ? clean(meta?.cycle, 40) === cycle : null,
+        metaConceptsMatchRequest: Array.isArray(meta?.concepts) ? concepts.every((concept) => meta.concepts.map(Number).includes(concept)) : null
       },
       analysis,
       verdict: !response.ok
@@ -232,6 +239,77 @@ const probeAuroraPlantel = async (options: {
       },
       verdict: cause?.name === 'AbortError' ? 'timeout' : 'network_error'
     }
+  }
+}
+
+
+const probeAuroraServerDiagnostics = async (options: {
+  baseUrl: string
+  token: string
+  plantel: string
+  year: string
+  cycle: string
+  concepts: number[]
+  timeoutMs: number
+}) => {
+  const { baseUrl, token, plantel, year, cycle, concepts, timeoutMs } = options
+  const started = Date.now()
+  const url = new URL('/api/external/v1/summer/diagnostics', baseUrl)
+  url.searchParams.set('plantel', plantel)
+  url.searchParams.set('year', year)
+  url.searchParams.set('cycle', cycle)
+  url.searchParams.set('concepts', concepts.join(','))
+  url.searchParams.set('_dx', String(Date.now()))
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Cache-Control': 'no-cache' },
+      cache: 'no-store',
+      signal: controller.signal
+    })
+    const body = await response.text()
+    let parsed: any = null
+    let parseError: string | null = null
+    try { parsed = body ? JSON.parse(body) : null } catch (cause: any) { parseError = clean(cause?.message || cause, 1000) }
+    return {
+      plantel,
+      request: { method: 'GET', url: url.toString(), timeoutMs },
+      transport: {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        latencyMs: Date.now() - started,
+        contentType: response.headers.get('content-type'),
+        diagnosticVersionHeader: response.headers.get('x-aurora-summer-diagnostics-version'),
+        bodyCharacters: body.length
+      },
+      available: response.status !== 404,
+      parsed: parseError === null,
+      parseError,
+      payload: parsed && typeof parsed === 'object' ? parsed : null,
+      bodyPreview: !response.ok || parseError ? clean(body, 12000) || null : null
+    }
+  } catch (cause: any) {
+    return {
+      plantel,
+      request: { method: 'GET', url: url.toString(), timeoutMs },
+      transport: { ok: false, status: null, statusText: null, latencyMs: Date.now() - started, contentType: null, diagnosticVersionHeader: null, bodyCharacters: 0 },
+      available: null,
+      parsed: false,
+      parseError: null,
+      payload: null,
+      bodyPreview: null,
+      error: {
+        name: clean(cause?.name || 'Error', 200),
+        message: clean(cause?.message || cause || 'Error desconocido', 4000),
+        code: clean(cause?.code, 200) || null,
+        cause: clean(cause?.cause?.message || cause?.cause, 2000) || null,
+        stack: clean(cause?.stack, 12000) || null
+      }
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -283,6 +361,7 @@ export const diagnoseAuroraEnrollment = async () => {
   }
 
   const probesWithPrivateIdentity = await Promise.all(configuredPlanteles.map((plantel) => probeAuroraPlantel({ baseUrl: rawBaseUrl, token, plantel, year, cycle, concepts, timeoutMs })))
+  const serverDiagnostics = await Promise.all(configuredPlanteles.map((plantel) => probeAuroraServerDiagnostics({ baseUrl: rawBaseUrl, token, plantel, year, cycle, concepts, timeoutMs: Math.max(timeoutMs, 20000) })))
   const identityMap = new Map<string, { masked: string | null; planteles: Set<string>; reportedPlanteles: Set<string>; concepts: Set<number> }>()
   const byConcept: Record<string, number> = {}
   const byRequestedPlantel: Record<string, number> = {}
@@ -324,6 +403,16 @@ export const diagnoseAuroraEnrollment = async () => {
   const emptyPlanteles = probes.filter((probe) => probe.verdict === 'valid_empty_result').map((probe) => probe.plantel)
   const failedPlanteles = probes.filter((probe) => !probe.transport.ok || !probe.contract?.dataIsArray).map((probe) => probe.plantel)
 
+  const serverDiagnosticsAvailable = serverDiagnostics.filter((probe) => probe.available === true).length
+  const serverDiagnosticsMissing = serverDiagnostics.filter((probe) => probe.transport.status === 404).map((probe) => probe.plantel)
+  const serverDiagnosticBranchFailures = serverDiagnostics.flatMap((probe) => {
+    const paid = probe.payload?.queryDiagnostics?.paid
+    const charged = probe.payload?.queryDiagnostics?.charged
+    return [paid, charged]
+      .filter((branch) => branch && branch.ok === false)
+      .map((branch) => ({ plantel: probe.plantel, branch: branch.key, error: branch.error || null }))
+  })
+
   const findings: Array<{ severity: 'error' | 'warning' | 'info'; code: string; message: string; evidence?: unknown }> = []
   if (httpSuccesses === probes.length && contractSuccesses === probes.length && totalRawRows === 0) {
     findings.push({
@@ -338,6 +427,23 @@ export const diagnoseAuroraEnrollment = async () => {
       message: 'La implementación de Aurora conocida convierte errores de las consultas paid/charged en arreglos vacíos. Un resultado data: [] no demuestra que las consultas SQL hayan ejecutado correctamente; Aurora debe exponer el error de cada rama para distinguir “cero inscritos” de “consulta fallida”.'
     })
   }
+  if (serverDiagnosticBranchFailures.length) findings.push({
+    severity: 'error',
+    code: 'AURORA_FINANCIAL_QUERY_ERRORS_EXPOSED',
+    message: 'Aurora confirmó errores en una o más ramas SQL de inscripción. Los errores exactos están en serverDiagnostics[].payload.queryDiagnostics.',
+    evidence: serverDiagnosticBranchFailures
+  })
+  if (serverDiagnosticsMissing.length === configuredPlanteles.length) findings.push({
+    severity: 'warning',
+    code: 'AURORA_DEEP_DIAGNOSTICS_NOT_DEPLOYED',
+    message: 'Aurora aún no tiene desplegado /api/external/v1/summer/diagnostics. Se puede localizar el límite, pero no leer errores SQL ocultos por Aurora.',
+    evidence: { missingPlanteles: serverDiagnosticsMissing }
+  })
+  if (serverDiagnosticsAvailable === configuredPlanteles.length && !serverDiagnosticBranchFailures.length) findings.push({
+    severity: 'info',
+    code: 'AURORA_DEEP_DIAGNOSTICS_AVAILABLE',
+    message: 'Aurora expuso el estado de las ramas paid y charged para todos los planteles.'
+  })
   if (httpSuccesses === 0) findings.push({ severity: 'error', code: 'AURORA_NO_HTTP_SUCCESS', message: 'Ningún plantel respondió correctamente. Revisar URL, token, red, timeout y despliegue de Aurora.', evidence: probes.map((probe) => ({ plantel: probe.plantel, verdict: probe.verdict, status: probe.transport.status, error: (probe as any).error?.message || null })) })
   if (contractSuccesses < httpSuccesses) findings.push({ severity: 'error', code: 'AURORA_RESPONSE_CONTRACT_MISMATCH', message: 'Al menos una respuesta HTTP correcta no contiene el arreglo data esperado. Revisar topLevelKeys y arraysDiscovered por plantel.' })
   if (totalRawRows > 0 && totalConfiguredConceptRows === 0) findings.push({ severity: 'error', code: 'AURORA_ROWS_WRONG_CONCEPTS', message: 'Aurora devolvió filas, pero ninguna pertenece a los conceptos configurados.', evidence: { byConcept, configuredConcepts: concepts } })
@@ -361,8 +467,14 @@ export const diagnoseAuroraEnrollment = async () => {
       byConcept,
       distinctMatriculasAcrossPlanteles: identityMap.size,
       crossPlantelDuplicates: { count: crossPlantelDuplicates.length, sample: crossPlantelDuplicates.slice(0, 20) },
-      multiConceptMatriculas: { count: multiConceptMatriculas.length, sample: multiConceptMatriculas.slice(0, 20) }
+      multiConceptMatriculas: { count: multiConceptMatriculas.length, sample: multiConceptMatriculas.slice(0, 20) },
+      deepDiagnostics: {
+        availablePlanteles: serverDiagnosticsAvailable,
+        missingPlanteles: serverDiagnosticsMissing,
+        branchFailures: serverDiagnosticBranchFailures.length
+      }
     },
+    serverDiagnostics,
     findings
   }
 }

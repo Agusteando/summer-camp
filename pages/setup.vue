@@ -104,7 +104,7 @@ watch(scopeSummaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(async () => {
   scope.initialize()
-  await summer.load()
+  await summer.load('page-setup-mounted')
   scope.reconcile(scopeSummaries.value)
 })
 </script>

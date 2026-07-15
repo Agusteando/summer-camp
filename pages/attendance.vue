@@ -57,7 +57,7 @@ watch(summaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(async () => {
   scope.initialize()
-  await Promise.all([load(), summer.load()])
+  await Promise.all([load(), summer.load('page-attendance-mounted')])
   scope.reconcile(summaries.value)
 })
 </script>

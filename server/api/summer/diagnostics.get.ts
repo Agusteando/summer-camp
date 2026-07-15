@@ -35,6 +35,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const id = requestId()
+  setResponseHeader(event, 'X-Summer-DX-Version', '9')
+  setResponseHeader(event, 'X-Summer-DX-Request-Id', id)
   const started = Date.now()
   const today = new Date().toISOString().slice(0, 10)
   const date = isoDate(getQuery(event).date, today)!
@@ -291,9 +293,86 @@ export default defineEventHandler(async (event) => {
 
   const primaryFinding = findings.find((finding) => finding.severity === 'error') || findings.find((finding) => finding.severity === 'warning') || findings[0] || null
   const ok = checks.every((check) => check.ok)
+  const checkByKey = Object.fromEntries(checks.map((check) => [check.key, check])) as Record<string, Check>
+  const auroraAggregate = auroraInspection?.aggregate || null
+  const sourceLoaderRows = sourceLoaderCheck?.ok ? Number((sourceLoaderCheck.details as any)?.totalAfterNormalizationAndDeduplication || 0) : 0
+  const snapshotRows = snapshotCheck?.ok ? Number((snapshotCheck.details as any)?.students || 0) : 0
+  const boundaries = [
+    {
+      key: 'configuration',
+      label: 'Configuración requerida',
+      ok: concepts.length > 0 && planteles.length > 0 && Boolean(config.appMysqlHost && config.appMysqlUser && config.appMysqlDatabase) && (sourceMode === 'mysql' || sourceMode === 'demo' || Boolean(config.auroraBaseUrl && config.auroraApiToken)),
+      evidence: configuration
+    },
+    {
+      key: 'source_transport',
+      label: 'Transporte hacia la fuente',
+      ok: sourceMode === 'demo' || sourceMode === 'mysql' || Number(auroraAggregate?.httpSuccesses || 0) > 0,
+      evidence: sourceMode === 'aurora' || sourceMode === 'hybrid' ? { httpSuccesses: auroraAggregate?.httpSuccesses ?? null, requestedPlanteles: auroraAggregate?.requestedPlanteles ?? null, failedPlanteles: auroraAggregate?.failedPlanteles ?? null } : { sourceMode }
+    },
+    {
+      key: 'source_contract',
+      label: 'Contrato JSON de la fuente',
+      ok: sourceMode === 'demo' || sourceMode === 'mysql' || Number(auroraAggregate?.contractSuccesses || 0) > 0,
+      evidence: sourceMode === 'aurora' || sourceMode === 'hybrid' ? { contractSuccesses: auroraAggregate?.contractSuccesses ?? null, requestedPlanteles: auroraAggregate?.requestedPlanteles ?? null } : { sourceMode }
+    },
+    {
+      key: 'source_raw_rows',
+      label: 'Filas de inscripción devueltas por la fuente',
+      ok: sourceMode === 'demo' || sourceMode === 'mysql' ? Boolean(sourceLoaderCheck?.ok) : Number(auroraAggregate?.totalRawRows || 0) > 0,
+      evidence: { totalRawRows: auroraAggregate?.totalRawRows ?? null, byRequestedPlantel: auroraAggregate?.byRequestedPlantel ?? null }
+    },
+    {
+      key: 'configured_concept_rows',
+      label: 'Filas que pertenecen a 986/987/988',
+      ok: sourceMode === 'demo' || sourceMode === 'mysql' ? Boolean(sourceLoaderCheck?.ok) : Number(auroraAggregate?.totalConfiguredConceptRows || 0) > 0,
+      evidence: { configuredConcepts: concepts, totalConfiguredConceptRows: auroraAggregate?.totalConfiguredConceptRows ?? null, byConcept: auroraAggregate?.byConcept ?? null }
+    },
+    {
+      key: 'source_normalization',
+      label: 'Normalización y deduplicación de matrículas',
+      ok: Boolean(sourceLoaderCheck?.ok && sourceLoaderRows > 0),
+      evidence: sourceLoaderCheck || null
+    },
+    {
+      key: 'app_database',
+      label: 'MySQL operativo de Summer Camp',
+      ok: Boolean(checkByKey.app_connection?.ok),
+      evidence: checkByKey.app_connection || null
+    },
+    {
+      key: 'overrides_read',
+      label: 'Lectura de modalidad, alimento y edad',
+      ok: Boolean(checkByKey.overrides_read?.ok),
+      evidence: checkByKey.overrides_read || null
+    },
+    {
+      key: 'attendance_read',
+      label: 'Lectura de asistencia',
+      ok: Boolean(checkByKey.attendance_read?.ok),
+      evidence: checkByKey.attendance_read || null
+    },
+    {
+      key: 'snapshot_build',
+      label: 'Construcción final de students[] y summaries[]',
+      ok: Boolean(snapshotCheck?.ok && snapshotRows > 0),
+      evidence: snapshotCheck || null
+    }
+  ]
+  const failureBoundary = boundaries.find((boundary) => !boundary.ok) || null
+  const exactAuroraRequests = (auroraInspection?.probes || []).map((probe: any) => ({
+    plantel: probe.plantel,
+    campus: probe.campus,
+    url: probe.request?.url || null,
+    status: probe.transport?.status ?? null,
+    verdict: probe.verdict || null,
+    dataLength: probe.contract?.dataLength ?? null,
+    meta: probe.contract?.meta || null,
+    error: probe.error || null
+  }))
 
   return {
-    diagnosticVersion: 8,
+    diagnosticVersion: 9,
     ok,
     requestId: id,
     checkedAt: new Date().toISOString(),
@@ -312,10 +391,35 @@ export default defineEventHandler(async (event) => {
       programRule: 'Husky Dreamers / Clínica se toma de summer_student_overrides; el concepto financiero no identifica modalidad.',
       mealRule: '986 = sin alimento, 987 = un alimento por definir, 988 = comida + cena.',
       snapshotDependencies: 'Una lista visible requiere: fuente con alumnos + lectura MySQL app + buildSnapshot + respuesta HTTP JSON + asignación en el estado cliente.',
-      auroraKnownRisk: 'La versión conocida de Aurora atrapa errores de las dos consultas financieras y los convierte en arreglos vacíos; data: [] puede ocultar una falla SQL.'
+      auroraKnownRisk: 'La versión conocida de Aurora atrapa errores de las dos consultas financieras y los convierte en arreglos vacíos; data: [] puede ocultar una falla SQL.',
+      currentLimitation: 'Sin el endpoint opcional /api/external/v1/summer/diagnostics de Aurora, Summer Camp puede localizar la falla en Aurora pero no leer el error SQL que Aurora haya ocultado.'
     },
+    diagnosticCompleteness: {
+      expectedPlantelProbes: sourceMode === 'aurora' || sourceMode === 'hybrid' ? planteles.length : 0,
+      capturedPlantelProbes: auroraInspection?.probes?.length || 0,
+      checksCaptured: checks.length,
+      allConfiguredPlantelesProbed: sourceMode !== 'aurora' && sourceMode !== 'hybrid' ? true : (auroraInspection?.probes?.length || 0) === planteles.length,
+      exactRequestsCaptured: exactAuroraRequests.length,
+      failureBoundaryResolved: Boolean(failureBoundary) || snapshotRows > 0
+    },
+    dataFlow: {
+      configuredPlanteles: planteles.length,
+      auroraHttpSuccesses: auroraAggregate?.httpSuccesses ?? null,
+      auroraContractSuccesses: auroraAggregate?.contractSuccesses ?? null,
+      auroraRawRows: auroraAggregate?.totalRawRows ?? null,
+      auroraConfiguredConceptRows: auroraAggregate?.totalConfiguredConceptRows ?? null,
+      auroraDistinctMatriculas: auroraAggregate?.distinctMatriculasAcrossPlanteles ?? null,
+      sourceRowsAfterNormalization: sourceLoaderRows,
+      snapshotStudents: snapshotRows,
+      rowsLostRawToConfiguredConcept: auroraAggregate ? Math.max(0, Number(auroraAggregate.totalRawRows || 0) - Number(auroraAggregate.totalConfiguredConceptRows || 0)) : null,
+      rowsLostConfiguredConceptToNormalized: auroraAggregate ? Math.max(0, Number(auroraAggregate.totalConfiguredConceptRows || 0) - sourceLoaderRows) : null,
+      rowsLostNormalizedToSnapshot: Math.max(0, sourceLoaderRows - snapshotRows)
+    },
+    exactAuroraRequests,
+    boundaries,
     conclusion: {
       primaryFinding,
+      failureBoundary,
       allFindings: findings,
       serverPipelineComplete: Boolean(snapshotCheck?.ok),
       sourceRowsObservedDirectly: auroraInspection?.aggregate?.totalRawRows ?? null,

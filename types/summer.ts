@@ -64,6 +64,22 @@ export type AttendanceMutation = {
 }
 
 
+
+export type SummerLoadLifecycle = {
+  composableCreatedAt: string
+  clientMountedAt: string | null
+  clientMountedSources: string[]
+  loadAttempted: boolean
+  loadCallCount: number
+  firstLoadRequestedAt: string | null
+  lastLoadRequestedAt: string | null
+  lastLoadFinishedAt: string | null
+  lastLoadTrigger: string | null
+  lastLoadOutcome: 'idle' | 'running' | 'success' | 'failure'
+  lastLoadDurationMs: number | null
+  lastLoadError: string | null
+}
+
 export type ClientTraceEvent = {
   at: string
   event: string

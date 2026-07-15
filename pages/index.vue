@@ -80,7 +80,7 @@ watch(summaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(async () => {
   scope.initialize()
-  await summer.load()
+  await summer.load('page-index-mounted')
   scope.reconcile(summaries.value)
   summer.startPolling()
 })
@@ -114,7 +114,7 @@ onMounted(async () => {
       :selected-campus="scope.campus.value"
       :selected-plantel="scope.plantel.value"
       :selected-program="program"
-      :loading="summer.loading.value"
+      :loading="summer.loading.value || !summer.loadLifecycle.value.loadAttempted || summer.loadLifecycle.value.lastLoadOutcome === 'running'"
       :error="summer.error.value"
       @campus="setCampus"
       @plantel="setPlantel"
@@ -177,7 +177,7 @@ onMounted(async () => {
         <div v-else class="empty-state"><img src="/icons/dinos.png" alt=""><strong>Sin resultados</strong></div>
       </template>
 
-      <div v-else-if="summer.loading.value" class="loading-panel">
+      <div v-else-if="summer.loading.value || !summer.loadLifecycle.value.loadAttempted || summer.loadLifecycle.value.lastLoadOutcome === 'running'" class="loading-panel">
         <div class="loading-panel__heading"><span /><div><i /><i /></div></div>
         <div class="skeleton-stack"><div v-for="item in 6" :key="item" class="student-skeleton" /></div>
       </div>

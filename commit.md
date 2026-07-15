@@ -1,1 +1,1 @@
-fix: ampliar el diagnóstico de carga y corregir estados sin respuesta
+fix: ejecutar y completar el diagnóstico antes de copiarlo
