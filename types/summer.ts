@@ -63,6 +63,13 @@ export type AttendanceMutation = {
   clientTimestamp: string
 }
 
+
+export type ClientTraceEvent = {
+  at: string
+  event: string
+  details?: unknown
+}
+
 export type ClientRequestDiagnostic = {
   url: string
   startedAt: string
@@ -74,6 +81,7 @@ export type ClientRequestDiagnostic = {
   message: string | null
   responseData: unknown
   stack: string | null
+  lifecycle?: ClientTraceEvent[]
 }
 
 export type ServerDiagnosticCheck = {
@@ -86,13 +94,16 @@ export type ServerDiagnosticCheck = {
 }
 
 export type SummerDiagnosticsResponse = {
+  diagnosticVersion?: number
   ok: boolean
   requestId: string
   checkedAt: string
   latencyMs: number
   date: string
-  config: Record<string, unknown>
+  runtime?: Record<string, unknown>
+  configuration?: Record<string, unknown>
   assumptions: Record<string, string>
-  sourceSummary: Record<string, unknown> | null
+  conclusion?: Record<string, any>
+  auroraInspection?: Record<string, any> | null
   checks: ServerDiagnosticCheck[]
 }

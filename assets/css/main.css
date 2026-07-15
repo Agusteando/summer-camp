@@ -382,7 +382,14 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .diagnostic-panel__state.is-ok { color: var(--green-700); background: var(--green-100); }
 .diagnostic-panel__state.is-bad { color: var(--red-700); background: var(--red-100); }
 .diagnostic-panel__body { padding: 10px; border-top: 1px solid var(--line); display: grid; gap: 10px; background: #f8fbfd; }
+.diagnostic-focus { padding: 10px 11px; border: 1px solid #efc4c9; border-radius: 11px; display: flex; align-items: flex-start; gap: 8px; color: var(--red-700); background: var(--red-100); }
+.diagnostic-focus div { min-width: 0; display: grid; gap: 2px; }
+.diagnostic-focus strong { font-size: .7rem; }
+.diagnostic-focus span { overflow-wrap: anywhere; font: 650 .62rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .diagnostic-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.diagnostic-actions--sticky { position: sticky; top: 58px; z-index: 12; padding: 7px; margin: -2px -2px 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(248,251,253,.96); backdrop-filter: blur(10px); }
+.diagnostic-actions--bottom { justify-content: flex-end; }
+.diagnostic-actions--bottom button { min-height: 39px; }
 .diagnostic-actions button { min-height: 33px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; display: inline-flex; align-items: center; gap: 5px; color: var(--blue-800); background: #fff; font-size: .65rem; font-weight: 900; cursor: pointer; }
 .diagnostic-actions button:disabled { opacity: .55; cursor: default; }
 .diagnostic-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
@@ -404,7 +411,9 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .diagnostic-checks article strong { font-size: .66rem; }
 .diagnostic-checks article small { color: var(--muted); font-size: .55rem; font-weight: 700; }
 .diagnostic-checks code { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--red-700); font-size: .58rem; }
-.diagnostic-json { max-height: 360px; margin: 0; padding: 10px; overflow: auto; border-radius: 11px; color: #d8ecfa; background: #10283b; font: 600 .62rem/1.48 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagnostic-json-label { color: var(--muted); font-size: .62rem; font-weight: 900; }
+.diagnostic-json { width: 100%; min-height: 420px; max-height: 72vh; margin: 0; padding: 12px; resize: vertical; overflow: auto; border: 1px solid #23475f; border-radius: 11px; outline: none; color: #d8ecfa; background: #10283b; font: 600 .62rem/1.48 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; overflow-wrap: normal; tab-size: 2; }
+.diagnostic-json:focus { border-color: #5ebcff; box-shadow: 0 0 0 3px rgba(37,157,232,.18); }
 
 @media (min-width: 700px) {
   .diagnostic-shell { padding: 0 24px; }

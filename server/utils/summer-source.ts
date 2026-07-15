@@ -80,8 +80,31 @@ const fetchAuroraPlantel = async (plantel: string): Promise<SourceStudent[]> => 
       error.responseBody = responseBody || null
       throw error
     }
-    const payload: any = await response.json()
-    return (Array.isArray(payload?.data) ? payload.data : []).map((student: any) => ({
+    const responseBody = await response.text()
+    let payload: any = null
+    try {
+      payload = responseBody ? JSON.parse(responseBody) : null
+    } catch (cause: any) {
+      const error: any = new Error(`Aurora devolvió JSON inválido para ${plantel}`)
+      error.code = 'AURORA_INVALID_JSON'
+      error.statusCode = response.status
+      error.responseBody = responseBody.slice(0, 2000) || null
+      error.cause = cause
+      throw error
+    }
+    if (!Array.isArray(payload?.data)) {
+      const error: any = new Error(`Aurora no devolvió data[] para ${plantel}`)
+      error.code = 'AURORA_RESPONSE_SHAPE_INVALID'
+      error.statusCode = response.status
+      error.responseBody = responseBody.slice(0, 2000) || null
+      error.diagnostic = {
+        topLevelType: payload === null ? 'null' : Array.isArray(payload) ? 'array' : typeof payload,
+        topLevelKeys: payload && typeof payload === 'object' && !Array.isArray(payload) ? Object.keys(payload) : []
+      }
+      throw error
+    }
+    const allowedConcepts = new Set(conceptIds())
+    return payload.data.map((student: any) => ({
       matricula: normalizeMatricula(student.matricula),
       nombreCompleto: clean(student.nombreCompleto || student.fullName || student.name, 255),
       plantel: clean(student.plantel || plantel, 40).toUpperCase(),
@@ -89,7 +112,7 @@ const fetchAuroraPlantel = async (plantel: string): Promise<SourceStudent[]> => 
       conceptId: Number(student.conceptId || student.conceptoId || 0),
       photoAvailable: Boolean(student.photoAvailable || student.foto),
       source: 'aurora' as const
-    }))
+    })).filter((student: SourceStudent) => Boolean(student.matricula) && allowedConcepts.has(student.conceptId))
   } finally {
     clearTimeout(timeout)
   }

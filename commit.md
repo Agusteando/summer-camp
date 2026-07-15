@@ -1,1 +1,1 @@
-feat: rediseñar el panel de asistencia y añadir diagnóstico temporal visible
+fix: ampliar el diagnóstico de carga y corregir estados sin respuesta

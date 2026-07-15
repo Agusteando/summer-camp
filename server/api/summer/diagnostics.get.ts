@@ -1,11 +1,21 @@
 import { appQuery } from '../../utils/db'
 import { serializeDiagnosticError } from '../../utils/diagnostic-error'
+import { diagnoseAuroraEnrollment } from '../../utils/summer-source-diagnostics'
 import { loadSummerSource, testSourceHealth } from '../../utils/summer-source'
 import { buildSnapshot, loadAttendance, loadOverrides } from '../../utils/summer-state'
 import { isoDate } from '../../utils/validation'
 
 const elapsed = (started: number) => Date.now() - started
 const requestId = () => `diag-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const countBy = <T>(rows: T[], key: (row: T) => string) => rows.reduce<Record<string, number>>((acc, row) => {
+  const value = key(row) || '(vacío)'
+  acc[value] = (acc[value] || 0) + 1
+  return acc
+}, {})
+const maskMatricula = (value: unknown) => {
+  const matricula = String(value ?? '').trim().toUpperCase().replace(/\s+/g, '')
+  return matricula ? `${matricula.slice(0, 2)}***${matricula.slice(-4)}` : null
+}
 
 type Check = {
   key: string
@@ -13,11 +23,12 @@ type Check = {
   ok: boolean
   latencyMs: number
   details?: unknown
-  error?: ReturnType<typeof serializeDiagnosticError>
+  error?: ReturnType<typeof serializeDiagnosticError> | Record<string, unknown>
 }
 
 export default defineEventHandler(async (event) => {
-  setResponseHeader(event, 'Cache-Control', 'no-store')
+  setResponseHeader(event, 'Cache-Control', 'no-store, no-cache, must-revalidate')
+  setResponseHeader(event, 'Pragma', 'no-cache')
   const config = useRuntimeConfig()
   if (String(config.public.diagnosticsEnabled) === 'false') {
     throw createError({ statusCode: 404, message: 'Diagnóstico deshabilitado.' })
@@ -27,170 +38,296 @@ export default defineEventHandler(async (event) => {
   const started = Date.now()
   const today = new Date().toISOString().slice(0, 10)
   const date = isoDate(getQuery(event).date, today)!
+  const sourceMode = String(config.summerSourceMode || 'aurora').toLowerCase()
   const concepts = String(config.summerConceptIds || '986,987,988').split(',').map(Number).filter(Number.isFinite)
   const planteles = String(config.summerPlanteles || '').split(',').map((value) => value.trim().toUpperCase()).filter(Boolean)
   const checks: Check[] = []
 
-  const run = async (key: string, label: string, task: () => Promise<unknown>) => {
+  const run = async <T>(key: string, label: string, task: () => Promise<T>): Promise<T | null> => {
     const checkStarted = Date.now()
     try {
       const details = await task()
       checks.push({ key, label, ok: true, latencyMs: elapsed(checkStarted), details })
       return details
     } catch (cause: any) {
-      checks.push({ key, label, ok: false, latencyMs: elapsed(checkStarted), details: cause?.diagnostic || cause?.failures || undefined, error: serializeDiagnosticError(cause) })
+      checks.push({
+        key,
+        label,
+        ok: false,
+        latencyMs: elapsed(checkStarted),
+        details: cause?.diagnostic || cause?.failures || undefined,
+        error: serializeDiagnosticError(cause)
+      })
       return null
     }
   }
 
-  await run('app_connection', 'Conexión MySQL de Summer Camp', async () => {
+  const runtime = {
+    node: process.version,
+    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || null,
+    region: process.env.VERCEL_REGION || null,
+    deploymentUrlPresent: Boolean(process.env.VERCEL_URL),
+    serverTime: new Date().toISOString(),
+    requestHeaders: {
+      host: getHeader(event, 'host') || null,
+      userAgent: getHeader(event, 'user-agent') || null,
+      forwardedProto: getHeader(event, 'x-forwarded-proto') || null,
+      forwardedHost: getHeader(event, 'x-forwarded-host') || null
+    }
+  }
+
+  const configuration = {
+    sourceMode,
+    summerYear: Number(config.summerYear || 2026),
+    cycle: String(config.summerCycle || '2026'),
+    conceptIds: concepts,
+    conceptsExactlyExpected: concepts.length === 3 && [986, 987, 988].every((idValue) => concepts.includes(idValue)),
+    configuredPlanteles: planteles,
+    configuredPlantelCount: planteles.length,
+    auroraBaseUrlConfigured: Boolean(String(config.auroraBaseUrl || '').trim()),
+    auroraApiTokenConfigured: Boolean(String(config.auroraApiToken || '').trim()),
+    auroraTimeoutMs: Number(config.auroraTimeoutMs || 12000),
+    appMysqlConfigured: Boolean(config.appMysqlHost && config.appMysqlUser && config.appMysqlDatabase),
+    diagnosticsEnabled: true
+  }
+
+  const diagnosticState: {
+    auroraInspection: Awaited<ReturnType<typeof diagnoseAuroraEnrollment>> | null
+    sourceResult: Awaited<ReturnType<typeof loadSummerSource>> | null
+    appConnectionOk: boolean
+    sourceHealth: Awaited<ReturnType<typeof testSourceHealth>> | null
+  } = { auroraInspection: null, sourceResult: null, appConnectionOk: false, sourceHealth: null }
+
+  const auroraTask = sourceMode === 'aurora' || sourceMode === 'hybrid'
+    ? run('aurora_exact_requests', 'Solicitudes exactas a Aurora por plantel', async () => await diagnoseAuroraEnrollment())
+      .then((result) => { diagnosticState.auroraInspection = result })
+    : Promise.resolve().then(() => {
+      checks.push({
+        key: 'aurora_exact_requests',
+        label: 'Solicitudes exactas a Aurora por plantel',
+        ok: true,
+        latencyMs: 0,
+        details: { skipped: true, reason: `SUMMER_SOURCE_MODE=${sourceMode}` }
+      })
+    })
+
+  const healthTask = run('source_health', 'Health reportado por la fuente', async () => {
+    diagnosticState.sourceHealth = await testSourceHealth()
+    if (!diagnosticState.sourceHealth.reachable) {
+      const error: any = new Error('El health de la fuente reporta que no es alcanzable.')
+      error.code = 'SOURCE_HEALTH_UNREACHABLE'
+      error.diagnostic = diagnosticState.sourceHealth
+      throw error
+    }
+    return diagnosticState.sourceHealth
+  })
+
+  const sourceTask = run('source_loader', 'Resultado real de loadSummerSource()', async () => {
+    diagnosticState.sourceResult = await loadSummerSource()
+    const students = diagnosticState.sourceResult.students
+    const byPlantel = countBy(students, (student) => student.plantel)
+    const byConcept = countBy(students, (student) => String(student.conceptId))
+    const bySource = countBy(students, (student) => student.source)
+    const missing = {
+      matricula: students.filter((student) => !student.matricula).length,
+      name: students.filter((student) => !student.nombreCompleto).length,
+      plantel: students.filter((student) => !student.plantel).length,
+      curp: students.filter((student) => !student.curp).length
+    }
+    const outsideConcepts = students.filter((student) => !concepts.includes(Number(student.conceptId)))
+    const duplicateCounts = new Map<string, number>()
+    students.forEach((student) => duplicateCounts.set(student.matricula, (duplicateCounts.get(student.matricula) || 0) + 1))
+    const duplicates = Array.from(duplicateCounts.entries()).filter(([, count]) => count > 1)
+    const details = {
+      source: diagnosticState.sourceResult.source,
+      sourceReachable: diagnosticState.sourceResult.reachable,
+      partial: diagnosticState.sourceResult.partial,
+      failedPlanteles: diagnosticState.sourceResult.failedPlanteles,
+      failures: diagnosticState.sourceResult.failures,
+      totalAfterNormalizationAndDeduplication: students.length,
+      byPlantel,
+      byConcept,
+      bySource,
+      missing,
+      rowsOutsideConfiguredConcepts: outsideConcepts.length,
+      outsideConceptSamples: outsideConcepts.slice(0, 10).map((student) => ({ matricula: maskMatricula(student.matricula), conceptId: student.conceptId, plantel: student.plantel })),
+      duplicateMatriculasAfterMerge: duplicates.length,
+      samples: students.slice(0, 8).map((student) => ({
+        matricula: maskMatricula(student.matricula),
+        namePresent: Boolean(student.nombreCompleto),
+        plantel: student.plantel,
+        conceptId: student.conceptId,
+        curpPresent: Boolean(student.curp),
+        photoAvailable: student.photoAvailable,
+        source: student.source
+      }))
+    }
+    if (!students.length) {
+      const error: any = new Error('loadSummerSource() terminó correctamente, pero produjo cero alumnos después de leer, normalizar y deduplicar la fuente.')
+      error.code = 'SUMMER_SOURCE_LOADER_EMPTY'
+      error.diagnostic = details
+      throw error
+    }
+    return details
+  })
+
+  const appTask = run('app_connection', 'Conexión de lectura a MySQL de Summer Camp', async () => {
     const rows = await appQuery<any[]>('SELECT DATABASE() AS databaseName, NOW() AS serverTime')
+    diagnosticState.appConnectionOk = true
     return { databaseName: rows?.[0]?.databaseName || null, serverTime: rows?.[0]?.serverTime || null }
   })
 
-  await run('app_schema', 'Tablas y columnas operativas', async () => {
-    const tables = await appQuery<any[]>(`
-      SELECT TABLE_NAME AS tableName
-      FROM information_schema.TABLES
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME IN ('summer_student_overrides', 'summer_attendance')
-      ORDER BY TABLE_NAME
-    `)
-    const columns = await appQuery<any[]>(`
-      SELECT TABLE_NAME AS tableName, COLUMN_NAME AS columnName, COLUMN_TYPE AS columnType, IS_NULLABLE AS isNullable
-      FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME IN ('summer_student_overrides', 'summer_attendance')
-      ORDER BY TABLE_NAME, ORDINAL_POSITION
-    `)
-    const required: Record<string, string[]> = {
-      summer_student_overrides: ['summer_year', 'matricula', 'program', 'meal_plan', 'age_override', 'updated_by', 'updated_at'],
-      summer_attendance: ['id', 'summer_year', 'attendance_date', 'matricula', 'status', 'plantel', 'actor_name', 'device_id', 'client_timestamp', 'idempotency_key', 'created_at', 'updated_at']
-    }
-    const presentTables = new Set(tables.map((row) => String(row.tableName)))
-    const presentColumns = new Map<string, Set<string>>()
-    columns.forEach((row) => {
-      const table = String(row.tableName)
-      const set = presentColumns.get(table) || new Set<string>()
-      set.add(String(row.columnName))
-      presentColumns.set(table, set)
-    })
-    const missingTables = Object.keys(required).filter((table) => !presentTables.has(table))
-    const missingColumns = Object.entries(required).flatMap(([table, names]) => names
-      .filter((column) => !presentColumns.get(table)?.has(column))
-      .map((column) => `${table}.${column}`))
-    const diagnostic = { tables, columns, missingTables, missingColumns }
-    if (missingTables.length || missingColumns.length) {
-      const error: any = new Error('El esquema de Summer Camp no coincide con lo que espera la aplicación.')
-      error.code = 'APP_SCHEMA_MISMATCH'
-      error.diagnostic = diagnostic
-      throw error
-    }
-    return diagnostic
-  })
+  await Promise.all([auroraTask, healthTask, sourceTask, appTask])
 
-  await run('source_health', 'Conectividad de la fuente externa', async () => {
-    const health = await testSourceHealth()
-    if (!health.reachable) {
-      const error: any = new Error('La fuente externa no superó la prueba de conectividad.')
-      error.code = 'SOURCE_UNREACHABLE'
-      error.diagnostic = health
-      throw error
-    }
-    return health
-  })
+  const resolvedSource = diagnosticState.sourceResult
+  const sourceStudents = resolvedSource?.students || []
+  const matriculas = sourceStudents.map((student) => student.matricula)
 
-  let sourceResult: Awaited<ReturnType<typeof loadSummerSource>> | null = null
-  await run('source_students', 'Alumnos inscritos en conceptos Summer Camp', async () => {
-    sourceResult = await loadSummerSource()
-    const byPlantel: Record<string, number> = {}
-    const byConcept: Record<string, number> = {}
-    sourceResult.students.forEach((student) => {
-      byPlantel[student.plantel] = (byPlantel[student.plantel] || 0) + 1
-      byConcept[String(student.conceptId)] = (byConcept[String(student.conceptId)] || 0) + 1
-    })
-    const summary = {
-      totalDistinctStudents: sourceResult.students.length,
-      byPlantel,
-      byConcept,
-      failedPlanteles: sourceResult.failedPlanteles,
-      failures: sourceResult.failures || [],
-      partial: sourceResult.partial,
-      source: sourceResult.source
-    }
-    if (!sourceResult.students.length) {
-      const error: any = new Error('La fuente respondió, pero devolvió cero alumnos para los conceptos configurados.')
-      error.code = 'SUMMER_SOURCE_EMPTY'
-      error.diagnostic = summary
-      throw error
-    }
-    return summary
-  })
-
-  const resolvedSource = sourceResult as Awaited<ReturnType<typeof loadSummerSource>> | null
-  const students = resolvedSource?.students || []
-  const matriculas = students.map((student: any) => student.matricula)
-
-  if (matriculas.length) {
-    await run('overrides_read', 'Lectura de modalidades, alimentos y edades', async () => {
+  if (matriculas.length && diagnosticState.appConnectionOk) {
+    await run('overrides_read', 'Lectura de modalidad, alimento y edad', async () => {
       const rows = await loadOverrides(matriculas)
-      return { matchedOverrides: rows.size, enrollmentStudents: matriculas.length }
-    })
-
-    await run('attendance_read', 'Lectura de asistencia del día', async () => {
-      const rows = await loadAttendance(date, matriculas)
-      return { attendanceRows: rows.size, date }
-    })
-
-    await run('snapshot_pipeline', 'Construcción completa de la lista', async () => {
-      const snapshot = await buildSnapshot(date, students, resolvedSource!)
-      const byProgram = snapshot.students.reduce<Record<string, number>>((acc, student) => {
-        acc[student.program] = (acc[student.program] || 0) + 1
-        return acc
-      }, {})
       return {
-        students: snapshot.students.length,
-        planteles: snapshot.summaries.length,
-        byProgram,
-        generatedAt: snapshot.meta.generatedAt
+        requestedMatriculas: matriculas.length,
+        matchedOverrides: rows.size,
+        unmatchedStudents: matriculas.length - rows.size,
+        matchPercent: matriculas.length ? Math.round((rows.size / matriculas.length) * 1000) / 10 : 0
       }
+    })
+
+    await run('attendance_read', 'Lectura de asistencia para la fecha seleccionada', async () => {
+      const rows = await loadAttendance(date, matriculas)
+      return {
+        date,
+        requestedMatriculas: matriculas.length,
+        attendanceRows: rows.size,
+        studentsWithoutAttendance: matriculas.length - rows.size
+      }
+    })
+
+    await run('snapshot_pipeline', 'Construcción exacta de la respuesta /snapshot', async () => {
+      const snapshot = await buildSnapshot(date, sourceStudents, resolvedSource!)
+      const details = {
+        responseIsObject: Boolean(snapshot && typeof snapshot === 'object'),
+        date: snapshot.date,
+        studentsIsArray: Array.isArray(snapshot.students),
+        summariesIsArray: Array.isArray(snapshot.summaries),
+        students: snapshot.students.length,
+        summaries: snapshot.summaries.length,
+        byCampus: countBy(snapshot.students, (student) => student.campus),
+        byProgram: countBy(snapshot.students, (student) => student.program),
+        byConcept: countBy(snapshot.students, (student) => String(student.conceptId)),
+        byPlantel: countBy(snapshot.students, (student) => student.plantel),
+        byAttendance: countBy(snapshot.students, (student) => student.attendance),
+        missingAge: snapshot.students.filter((student) => student.age === null).length,
+        generatedAt: snapshot.meta.generatedAt,
+        source: snapshot.meta.source,
+        partial: snapshot.meta.partial,
+        failedPlanteles: snapshot.meta.failedPlanteles,
+        serializedCharacters: JSON.stringify(snapshot).length,
+        firstStudentShape: snapshot.students[0] ? Object.keys(snapshot.students[0]).sort() : []
+      }
+      if (!snapshot.students.length) {
+        const error: any = new Error('buildSnapshot() produjo una respuesta válida, pero students[] quedó vacío.')
+        error.code = 'SUMMER_SNAPSHOT_EMPTY'
+        error.diagnostic = details
+        throw error
+      }
+      return details
     })
   } else {
     checks.push({
       key: 'snapshot_pipeline',
-      label: 'Construcción completa de la lista',
+      label: 'Construcción exacta de la respuesta /snapshot',
       ok: false,
       latencyMs: 0,
-      details: { skipped: true, reason: 'La fuente no devolvió alumnos.' }
+      details: {
+        skipped: true,
+        reason: !matriculas.length ? 'No hay matrículas provenientes de la fuente.' : 'MySQL de Summer Camp no está disponible.',
+        sourceStudents: matriculas.length,
+        appConnectionOk: diagnosticState.appConnectionOk
+      },
+      error: {
+        code: 'SNAPSHOT_PIPELINE_SKIPPED',
+        message: 'No fue posible ejecutar la construcción completa.'
+      }
     })
   }
 
-  const sourceCheck: any = checks.find((check) => check.key === 'source_students')
-  const sourceSummary = sourceCheck?.details || null
+  const auroraInspection = diagnosticState.auroraInspection
+  const sourceHealth = diagnosticState.sourceHealth
+  const findings: Array<{ severity: 'error' | 'warning' | 'info'; code: string; message: string; evidence?: unknown }> = [...(auroraInspection?.findings || [])] as Array<{ severity: 'error' | 'warning' | 'info'; code: string; message: string; evidence?: unknown }>
+  const sourceLoaderCheck = checks.find((check) => check.key === 'source_loader')
+  const snapshotCheck = checks.find((check) => check.key === 'snapshot_pipeline')
+
+  if (sourceHealth?.reachable && !sourceLoaderCheck?.ok) {
+    findings.push({
+      severity: 'error' as const,
+      code: 'HEALTH_OK_BUT_ENROLLMENT_FAILED',
+      message: 'La prueba de salud es positiva, pero la consulta real de alumnos falla o devuelve cero. El health solo confirma conectividad; no valida ciclo, conceptos, estatus, SQL ni contenido de data[].',
+      evidence: { sourceHealth }
+    })
+  }
+  if (auroraInspection?.aggregate?.totalRawRows && !sourceLoaderCheck?.ok) {
+    findings.push({
+      severity: 'error' as const,
+      code: 'ROWS_EXIST_BUT_SOURCE_LOADER_FAILED',
+      message: 'Las solicitudes directas a Aurora muestran filas, pero loadSummerSource() no las entrega. Comparar contrato data[], nombres de campos, conceptos, planteles y normalización.'
+    })
+  }
+  if (sourceLoaderCheck?.ok && !snapshotCheck?.ok) {
+    findings.push({
+      severity: 'error' as const,
+      code: 'SOURCE_OK_SNAPSHOT_FAILED',
+      message: 'La inscripción llega a Summer Camp, pero falla al combinar overrides/asistencia o al construir tokens y grupos.'
+    })
+  }
+  if (snapshotCheck?.ok) {
+    findings.push({
+      severity: 'info' as const,
+      code: 'SERVER_PIPELINE_COMPLETE',
+      message: 'El servidor logra construir una lista completa. Si el navegador sigue sin mostrarla, el problema está en la solicitud del cliente, la respuesta HTTP, el estado compartido, HMR o el service worker.'
+    })
+  }
+
+  const primaryFinding = findings.find((finding) => finding.severity === 'error') || findings.find((finding) => finding.severity === 'warning') || findings[0] || null
   const ok = checks.every((check) => check.ok)
 
   return {
+    diagnosticVersion: 8,
     ok,
     requestId: id,
     checkedAt: new Date().toISOString(),
     latencyMs: elapsed(started),
     date,
-    config: {
-      sourceMode: String(config.summerSourceMode || 'aurora'),
-      summerYear: Number(config.summerYear || 2026),
-      cycle: String(config.summerCycle || '2026'),
-      conceptIds: concepts,
-      configuredPlanteles: planteles,
-      diagnosticsEnabled: true
-    },
+    runtime,
+    configuration,
     assumptions: {
-      enrollmentDefinition: 'Matrícula distinta con alguno de los conceptos configurados.',
+      enrollmentDefinition: 'Una matrícula distinta devuelta por la fuente para concepto 986, 987 o 988. El total KPI no depende de asistencia.',
+      sourceEndpoint: 'GET {AURORA_BASE_URL}/api/external/v1/summer/students por cada plantel, con year, cycle y concepts.',
+      expectedResponseContract: '{ data: SummerStudent[], meta: { plantel, cycle, concepts, total, ... } }',
+      sourcePayloadPath: 'Solo payload.data se considera lista válida. Cualquier otro arreglo se reporta como contract_mismatch.',
+      normalization: 'matricula se convierte a mayúsculas y sin espacios; nombre, plantel y CURP se limpian; conceptId se convierte a Number.',
+      deduplication: 'Se conserva una fila por matrícula. Si aparece más de una vez, prevalece el concepto numéricamente mayor (988 > 987 > 986).',
       campusRule: 'Toluca = CT, PT, ST. Cualquier otro plantel = Metepec.',
-      programRule: 'La modalidad se toma de summer_student_overrides; el concepto financiero no identifica Husky Dreamers o Clínica.',
-      mealRule: '986 = 0 alimentos, 987 = 1 alimento por definir, 988 = 2 alimentos.',
-      kpiRule: 'El total principal es inscripción; asistencia se presenta como presentes / inscritos.'
+      programRule: 'Husky Dreamers / Clínica se toma de summer_student_overrides; el concepto financiero no identifica modalidad.',
+      mealRule: '986 = sin alimento, 987 = un alimento por definir, 988 = comida + cena.',
+      snapshotDependencies: 'Una lista visible requiere: fuente con alumnos + lectura MySQL app + buildSnapshot + respuesta HTTP JSON + asignación en el estado cliente.',
+      auroraKnownRisk: 'La versión conocida de Aurora atrapa errores de las dos consultas financieras y los convierte en arreglos vacíos; data: [] puede ocultar una falla SQL.'
     },
-    sourceSummary,
+    conclusion: {
+      primaryFinding,
+      allFindings: findings,
+      serverPipelineComplete: Boolean(snapshotCheck?.ok),
+      sourceRowsObservedDirectly: auroraInspection?.aggregate?.totalRawRows ?? null,
+      sourceRowsMatchingConfiguredConceptsDirectly: auroraInspection?.aggregate?.totalConfiguredConceptRows ?? null,
+      sourceDistinctMatriculasDirectly: auroraInspection?.aggregate?.distinctMatriculasAcrossPlanteles ?? null,
+      sourceRowsAfterLoader: sourceLoaderCheck?.ok ? (sourceLoaderCheck.details as any)?.totalAfterNormalizationAndDeduplication ?? null : 0,
+      estimatedRowsFilteredOrDeduplicated: auroraInspection?.aggregate && sourceLoaderCheck?.ok
+        ? Math.max(0, Number(auroraInspection.aggregate.totalConfiguredConceptRows || 0) - Number((sourceLoaderCheck.details as any)?.totalAfterNormalizationAndDeduplication || 0))
+        : null,
+      nextBoundaryToInspect: snapshotCheck?.ok ? 'browser_http_and_state' : sourceLoaderCheck?.ok ? 'snapshot_dependencies' : 'aurora_or_source_loader'
+    },
+    auroraInspection,
     checks
   }
 })
