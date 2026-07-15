@@ -1,6 +1,7 @@
 import { financialQuery } from './db'
 import { demoStudents } from './demo'
 import { resolveSummerPlantelConfiguration } from './summer-config'
+import { setLastSummerSourceTrace, type SummerSourceTrace } from './summer-source-trace'
 
 export type SourceStudent = {
   matricula: string
@@ -48,8 +49,7 @@ const clean = (value: unknown, max = 255) => String(value ?? '').trim().slice(0,
 const normalizeMatricula = (value: unknown) => clean(value, 64).toUpperCase().replace(/\s+/g, '')
 const conceptIds = () => String(useRuntimeConfig().summerConceptIds || '986,987,988').split(',').map(Number).filter(Number.isFinite)
 const isDemo = () => String(useRuntimeConfig().demoMode || '').toLowerCase() === 'true'
-const auroraTimeoutMs = () => Math.max(25000, Number(useRuntimeConfig().auroraTimeoutMs || 25000))
-
+const auroraTimeoutMs = () => Math.max(60000, Number(useRuntimeConfig().auroraTimeoutMs || 60000))
 const preferredConcept = (left: number, right: number) => Math.max(Number(left || 0), Number(right || 0))
 
 const mergeStudents = (rows: SourceStudent[]) => {
@@ -86,145 +86,195 @@ const toFailure = (plantel: string, cause: any): SourceFailure => ({
   message: String(cause?.message || cause || 'Error desconocido').slice(0, 4000),
   code: cause?.code ? String(cause.code) : null,
   statusCode: Number.isFinite(Number(cause?.statusCode)) ? Number(cause.statusCode) : null,
-  responseBody: cause?.responseBody ? String(cause.responseBody).slice(0, 12000) : null
+  responseBody: cause?.responseBody ? String(cause.responseBody).slice(0, 16000) : null
 })
 
-const fetchAuroraPlantel = async (plantel: string): Promise<{ rows: SourceStudent[]; meta: Record<string, unknown> | null; latencyMs: number }> => {
+const serializeTraceError = (cause: any) => ({
+  name: String(cause?.name || 'Error'),
+  message: String(cause?.message || cause || 'Error desconocido').slice(0, 4000),
+  code: cause?.code ? String(cause.code) : null,
+  statusCode: Number.isFinite(Number(cause?.statusCode)) ? Number(cause.statusCode) : null,
+  responseBody: cause?.responseBody ? String(cause.responseBody).slice(0, 16000) : null,
+  stack: cause?.stack ? String(cause.stack).slice(0, 12000) : null
+})
+
+const normalizeAuroraStudents = (rawRows: any[], allowedConcepts: Set<number>) => {
+  const rows: SourceStudent[] = []
+  let rejectedMissingMatricula = 0
+  let rejectedConcept = 0
+  const byConcept: Record<string, number> = {}
+  const byPlantel: Record<string, number> = {}
+
+  for (const student of rawRows) {
+    const matricula = normalizeMatricula(student?.matricula)
+    const conceptId = Number(student?.conceptId || student?.conceptoId || 0)
+    if (!matricula) {
+      rejectedMissingMatricula += 1
+      continue
+    }
+    if (!allowedConcepts.has(conceptId)) {
+      rejectedConcept += 1
+      continue
+    }
+    const plantel = clean(student?.plantel, 40).toUpperCase()
+    rows.push({
+      matricula,
+      nombreCompleto: clean(student?.nombreCompleto || student?.fullName || student?.name || matricula, 255),
+      plantel,
+      curp: clean(student?.curp, 18).toUpperCase(),
+      conceptId,
+      photoAvailable: Boolean(student?.photoAvailable || student?.foto),
+      source: 'aurora'
+    })
+    byConcept[String(conceptId)] = (byConcept[String(conceptId)] || 0) + 1
+    byPlantel[plantel || '(vacío)'] = (byPlantel[plantel || '(vacío)'] || 0) + 1
+  }
+
+  const merged = mergeStudents(rows)
+  return {
+    students: merged,
+    diagnostic: {
+      receivedRows: rawRows.length,
+      acceptedRows: rows.length,
+      rejectedMissingMatricula,
+      rejectedConcept,
+      distinctStudents: merged.length,
+      byConcept,
+      byPlantel
+    }
+  }
+}
+
+const fetchFromAurora = async (): Promise<SourceResult> => {
   const config = useRuntimeConfig()
+  const plantelConfig = resolveSummerPlantelConfiguration()
+  const configuredPlanteles = plantelConfig.resolved
+  const concepts = conceptIds()
   const base = clean(config.auroraBaseUrl, 500).replace(/\/+$/, '')
   const token = clean(config.auroraApiToken, 500)
-  if (!base || !token) throw Object.assign(new Error('Aurora no está configurada'), { code: 'AURORA_NOT_CONFIGURED' })
-
-  const started = Date.now()
-  const controller = new AbortController()
   const timeoutMs = auroraTimeoutMs()
+  const started = Date.now()
+
+  const trace: SummerSourceTrace = {
+    version: 12,
+    startedAt: new Date(started).toISOString(),
+    finishedAt: null,
+    durationMs: null,
+    request: null,
+    response: null,
+    normalization: null,
+    error: null
+  }
+
+  if (!base || !token) {
+    const error: any = new Error('Aurora no está configurada')
+    error.code = 'AURORA_NOT_CONFIGURED'
+    trace.error = serializeTraceError(error)
+    trace.finishedAt = new Date().toISOString()
+    trace.durationMs = Date.now() - started
+    setLastSummerSourceTrace(trace)
+    throw error
+  }
+
+  const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const url = new URL('/api/external/v1/summer/students', base)
+  url.searchParams.set('planteles', configuredPlanteles.join(','))
+  url.searchParams.set('year', String(config.summerYear || '2026'))
+  url.searchParams.set('cycle', String(config.summerCycle || '2026'))
+  url.searchParams.set('concepts', concepts.join(','))
+  trace.request = {
+    method: 'GET',
+    url: url.toString(),
+    timeoutMs,
+    planteles: configuredPlanteles,
+    cycle: String(config.summerCycle || '2026'),
+    concepts
+  }
+
   try {
-    const url = new URL('/api/external/v1/summer/students', base)
-    url.searchParams.set('plantel', plantel)
-    url.searchParams.set('year', String(config.summerYear || '2026'))
-    url.searchParams.set('cycle', String(config.summerCycle || '2026'))
-    url.searchParams.set('concepts', conceptIds().join(','))
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       signal: controller.signal,
       cache: 'no-store'
     })
+    const responseBody = await response.text()
+    let payload: any = null
+    try { payload = responseBody ? JSON.parse(responseBody) : null } catch {}
+    trace.response = {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      bodyCharacters: responseBody.length,
+      topLevelKeys: payload && typeof payload === 'object' && !Array.isArray(payload) ? Object.keys(payload).sort() : [],
+      dataIsArray: Array.isArray(payload?.data),
+      dataLength: Array.isArray(payload?.data) ? payload.data.length : null,
+      meta: payload?.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta) ? payload.meta : null
+    }
+
     if (!response.ok) {
-      const responseBody = (await response.text().catch(() => '')).slice(0, 12000)
-      const error: any = new Error(`Aurora respondió ${response.status} para ${plantel}`)
-      error.code = 'AURORA_HTTP_ERROR'
+      const error: any = new Error(payload?.message || `Aurora respondió ${response.status}`)
+      error.code = payload?.statusMessage || payload?.data?.code || 'AURORA_HTTP_ERROR'
+      error.statusCode = response.status
+      error.responseBody = responseBody || null
+      throw error
+    }
+    if (!Array.isArray(payload?.data)) {
+      const error: any = new Error('Aurora no devolvió data[] en el endpoint agregado de Summer Camp')
+      error.code = 'AURORA_RESPONSE_SHAPE_INVALID'
       error.statusCode = response.status
       error.responseBody = responseBody || null
       throw error
     }
 
-    const responseBody = await response.text()
-    let payload: any = null
-    try {
-      payload = responseBody ? JSON.parse(responseBody) : null
-    } catch (cause: any) {
-      const error: any = new Error(`Aurora devolvió JSON inválido para ${plantel}`)
-      error.code = 'AURORA_INVALID_JSON'
-      error.statusCode = response.status
-      error.responseBody = responseBody.slice(0, 12000) || null
-      error.cause = cause
-      throw error
-    }
-    if (!Array.isArray(payload?.data)) {
-      const error: any = new Error(`Aurora no devolvió data[] para ${plantel}`)
-      error.code = 'AURORA_RESPONSE_SHAPE_INVALID'
-      error.statusCode = response.status
-      error.responseBody = responseBody.slice(0, 12000) || null
-      throw error
-    }
+    const normalized = normalizeAuroraStudents(payload.data, new Set(concepts))
+    trace.normalization = normalized.diagnostic
 
-    const allowedConcepts = new Set(conceptIds())
-    const rows = payload.data.map((student: any) => ({
-      matricula: normalizeMatricula(student.matricula),
-      nombreCompleto: clean(student.nombreCompleto || student.fullName || student.name, 255),
-      plantel: clean(student.plantel || plantel, 40).toUpperCase(),
-      curp: clean(student.curp, 18).toUpperCase(),
-      conceptId: Number(student.conceptId || student.conceptoId || 0),
-      photoAvailable: Boolean(student.photoAvailable || student.foto),
-      source: 'aurora' as const
-    })).filter((student: SourceStudent) => Boolean(student.matricula) && allowedConcepts.has(student.conceptId))
+    const meta = payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta) ? payload.meta : {}
+    const plantelResults = Array.isArray(meta.plantelResults) ? meta.plantelResults : []
+    const successfulPlanteles = Array.isArray(meta.successfulPlanteles) ? meta.successfulPlanteles.map(String) : plantelResults.filter((row: any) => row?.ok).map((row: any) => String(row.plantel))
+    const emptyPlanteles = Array.isArray(meta.emptyPlanteles) ? meta.emptyPlanteles.map(String) : plantelResults.filter((row: any) => row?.ok && Number(row?.rowCount || 0) === 0).map((row: any) => String(row.plantel))
+    const failedPlanteles = Array.isArray(meta.failedPlanteles) ? meta.failedPlanteles.map(String) : plantelResults.filter((row: any) => row?.ok === false).map((row: any) => String(row.plantel))
+    const failures = plantelResults
+      .filter((row: any) => row?.ok === false)
+      .map((row: any) => toFailure(String(row?.plantel || 'aurora'), row?.error || { message: 'Error sin detalle' }))
+
+    trace.finishedAt = new Date().toISOString()
+    trace.durationMs = Date.now() - started
+    setLastSummerSourceTrace(trace)
 
     return {
-      rows,
-      meta: payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta) ? payload.meta : null,
-      latencyMs: Date.now() - started
+      students: normalized.students,
+      source: 'aurora',
+      reachable: true,
+      partial: Boolean(meta.partial || failedPlanteles.length),
+      requestedPlanteles: Array.isArray(meta.requestedPlanteles) ? meta.requestedPlanteles.map(String) : configuredPlanteles,
+      successfulPlanteles,
+      emptyPlanteles,
+      failedPlanteles,
+      failures,
+      plantelResults: plantelResults.map((row: any) => ({
+        plantel: String(row?.plantel || ''),
+        ok: Boolean(row?.ok),
+        rowCount: Number(row?.rowCount || 0),
+        latencyMs: Number(row?.latencyMs || 0),
+        meta: null,
+        error: row?.ok === false ? toFailure(String(row?.plantel || 'aurora'), row?.error || {}) : null
+      })),
+      configurationCorrections: plantelConfig.corrections
     }
   } catch (cause: any) {
     if (cause?.name === 'AbortError') {
       cause.code = 'AURORA_TIMEOUT'
-      cause.message = `Aurora excedió ${timeoutMs} ms para ${plantel}`
+      cause.message = `Aurora excedió ${timeoutMs} ms en la consulta agregada de Summer Camp`
     }
+    trace.error = serializeTraceError(cause)
+    trace.finishedAt = new Date().toISOString()
+    trace.durationMs = Date.now() - started
+    setLastSummerSourceTrace(trace)
     throw cause
   } finally {
     clearTimeout(timeout)
-  }
-}
-
-const fetchFromAurora = async (): Promise<SourceResult> => {
-  const plantelConfig = resolveSummerPlantelConfiguration()
-  const configuredPlanteles = plantelConfig.resolved
-  const settled = await Promise.allSettled(configuredPlanteles.map(async (plantel) => ({ plantel, result: await fetchAuroraPlantel(plantel) })))
-  const rows: SourceStudent[] = []
-  const successfulPlanteles: string[] = []
-  const emptyPlanteles: string[] = []
-  const failedPlanteles: string[] = []
-  const failures: SourceFailure[] = []
-  const plantelResults: SourcePlantelResult[] = []
-
-  settled.forEach((result, index) => {
-    const plantel = configuredPlanteles[index]
-    if (result.status === 'fulfilled') {
-      successfulPlanteles.push(plantel)
-      rows.push(...result.value.result.rows)
-      if (!result.value.result.rows.length) emptyPlanteles.push(plantel)
-      plantelResults.push({
-        plantel,
-        ok: true,
-        rowCount: result.value.result.rows.length,
-        latencyMs: result.value.result.latencyMs,
-        meta: result.value.result.meta,
-        error: null
-      })
-      return
-    }
-    const failure = toFailure(plantel, result.reason)
-    failedPlanteles.push(plantel)
-    failures.push(failure)
-    plantelResults.push({ plantel, ok: false, rowCount: 0, latencyMs: 0, meta: null, error: failure })
-  })
-
-  if (!successfulPlanteles.length) {
-    const error: any = new Error('Aurora no respondió correctamente para ningún plantel financiero')
-    error.code = 'AURORA_ALL_PLANTELES_FAILED'
-    error.failures = failures
-    error.diagnostic = {
-      requestedPlanteles: configuredPlanteles,
-      successfulPlanteles,
-      failedPlanteles,
-      timeoutMs: auroraTimeoutMs(),
-      configurationCorrections: plantelConfig.corrections
-    }
-    throw error
-  }
-
-  return {
-    students: mergeStudents(rows),
-    source: 'aurora',
-    reachable: true,
-    partial: failedPlanteles.length > 0,
-    requestedPlanteles: configuredPlanteles,
-    successfulPlanteles,
-    emptyPlanteles,
-    failedPlanteles,
-    failures,
-    plantelResults,
-    configurationCorrections: plantelConfig.corrections
   }
 }
 
@@ -233,58 +283,28 @@ const fetchFromMysql = async (): Promise<SourceResult> => {
   if (!ids.length) throw new Error('No hay conceptos configurados')
   const placeholders = ids.map(() => '?').join(',')
   const cycle = String(useRuntimeConfig().summerCycle || '2026')
-
-  const paidQuery = () => financialQuery<any[]>(`
+  const rows = await financialQuery<any[]>(`
     SELECT
-      UPPER(TRIM(R.matricula)) AS matricula,
-      MAX(TRIM(COALESCE(R.nombreCompleto, B.nombreCompleto, ''))) AS nombreCompleto,
-      MAX(UPPER(TRIM(COALESCE(R.plantel, B.plantel, '')))) AS plantel,
+      UPPER(TRIM(E.matricula)) AS matricula,
+      MAX(TRIM(COALESCE(NULLIF(B.nombreCompleto, ''), NULLIF(E.nombreCompleto, ''), ''))) AS nombreCompleto,
+      MAX(UPPER(TRIM(COALESCE(B.plantel, E.plantel, '')))) AS plantel,
       MAX(TRIM(COALESCE(B.curp, ''))) AS curp,
-      MAX(CAST(COALESCE(P.concepto_id, D.concepto, R.concepto) AS UNSIGNED)) AS conceptId
-    FROM referenciasdepago R
-    LEFT JOIN documentos D ON D.documento = R.documento
-    LEFT JOIN documento_concepto_periodos P
-      ON P.documento = R.documento
-      AND P.estatus = 'Activo'
-      AND CAST(R.mes AS UNSIGNED) >= P.start_mes
-      AND (P.end_mes IS NULL OR CAST(R.mes AS UNSIGNED) <= P.end_mes)
-    LEFT JOIN base B ON B.matricula = R.matricula
-    WHERE R.estatus = 'Vigente'
-      AND R.ciclo = ?
-      AND CAST(COALESCE(P.concepto_id, D.concepto, R.concepto) AS UNSIGNED) IN (${placeholders})
-    GROUP BY UPPER(TRIM(R.matricula))
-  `, [cycle, ...ids])
+      MAX(E.conceptId) AS conceptId
+    FROM (
+      SELECT R.matricula, R.nombreCompleto, R.plantel, CAST(R.concepto AS UNSIGNED) AS conceptId
+      FROM referenciasdepago R
+      WHERE R.estatus = 'Vigente' AND R.ciclo = ? AND CAST(R.concepto AS UNSIGNED) IN (${placeholders})
+      UNION ALL
+      SELECT D.matricula, '' AS nombreCompleto, '' AS plantel, CAST(D.concepto AS UNSIGNED) AS conceptId
+      FROM documentos D
+      WHERE D.estatus = 'Activo' AND D.ciclo = ? AND CAST(D.concepto AS UNSIGNED) IN (${placeholders})
+    ) E
+    LEFT JOIN base B ON B.matricula = E.matricula
+    WHERE TRIM(COALESCE(E.matricula, '')) <> ''
+    GROUP BY UPPER(TRIM(E.matricula))
+  `, [cycle, ...ids, cycle, ...ids])
 
-  const chargedQuery = () => financialQuery<any[]>(`
-    SELECT
-      UPPER(TRIM(D.matricula)) AS matricula,
-      MAX(TRIM(COALESCE(B.nombreCompleto, ''))) AS nombreCompleto,
-      MAX(UPPER(TRIM(COALESCE(B.plantel, '')))) AS plantel,
-      MAX(TRIM(COALESCE(B.curp, ''))) AS curp,
-      MAX(CAST(COALESCE(P.concepto_id, D.concepto) AS UNSIGNED)) AS conceptId
-    FROM documentos D
-    LEFT JOIN documento_concepto_periodos P ON P.documento = D.documento AND P.estatus = 'Activo'
-    LEFT JOIN base B ON B.matricula = D.matricula
-    WHERE D.estatus = 'Activo'
-      AND D.ciclo = ?
-      AND (P.accion IS NULL OR P.accion <> 'cancelacion')
-      AND CAST(COALESCE(P.concepto_id, D.concepto) AS UNSIGNED) IN (${placeholders})
-    GROUP BY UPPER(TRIM(D.matricula))
-  `, [cycle, ...ids])
-
-  const [paidResult, chargedResult] = await Promise.allSettled([paidQuery(), chargedQuery()])
-  const failures: SourceFailure[] = []
-  if (paidResult.status === 'rejected') failures.push(toFailure('financial.paid', paidResult.reason))
-  if (chargedResult.status === 'rejected') failures.push(toFailure('financial.charged', chargedResult.reason))
-  if (paidResult.status === 'rejected' && chargedResult.status === 'rejected') {
-    const error: any = new Error('No se pudieron consultar las inscripciones financieras.')
-    error.code = 'FINANCIAL_QUERIES_FAILED'
-    error.failures = failures
-    throw error
-  }
-  const paid = paidResult.status === 'fulfilled' ? paidResult.value : []
-  const charged = chargedResult.status === 'fulfilled' ? chargedResult.value : []
-  const rows = [...paid, ...charged].map((row: any) => ({
+  const students = mergeStudents(rows.map((row: any) => ({
     matricula: normalizeMatricula(row.matricula),
     nombreCompleto: clean(row.nombreCompleto, 255),
     plantel: clean(row.plantel, 40).toUpperCase(),
@@ -292,18 +312,18 @@ const fetchFromMysql = async (): Promise<SourceResult> => {
     conceptId: Number(row.conceptId || 0),
     photoAvailable: false,
     source: 'mysql' as const
-  }))
+  })))
 
   return {
-    students: mergeStudents(rows),
+    students,
     source: 'mysql',
     reachable: true,
-    partial: failures.length > 0,
+    partial: false,
     requestedPlanteles: [],
     successfulPlanteles: [],
     emptyPlanteles: [],
     failedPlanteles: [],
-    failures,
+    failures: [],
     plantelResults: [],
     configurationCorrections: []
   }
@@ -344,7 +364,7 @@ export const testSourceHealth = async () => {
     const base = clean(config.auroraBaseUrl, 500).replace(/\/+$/, '')
     const token = clean(config.auroraApiToken, 500)
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), Math.min(10000, auroraTimeoutMs()))
+    const timeout = setTimeout(() => controller.abort(), 10000)
     try {
       const plantelConfig = resolveSummerPlantelConfiguration()
       const healthUrl = new URL('/api/external/v1/summer/health', base)
@@ -365,8 +385,7 @@ export const testSourceHealth = async () => {
         bridgeReachable: payload?.bridgeReachable ?? null,
         centralReachable: payload?.centralReachable ?? null,
         probePlantel: payload?.plantel || probePlantel || null,
-        status: payload?.status || 'ok',
-        configurationCorrections: plantelConfig.corrections
+        status: payload?.status || 'ok'
       }
     } finally { clearTimeout(timeout) }
   } catch (cause: any) {

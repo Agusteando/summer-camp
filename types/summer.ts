@@ -52,6 +52,8 @@ export type SnapshotResponse = {
     successfulPlanteles?: string[]
     emptyPlanteles?: string[]
     configurationCorrections?: Array<{ input: string; output: string | null; reason: string }>
+    sourcePlantelResults?: Array<{ plantel: string; ok: boolean; rowCount: number; latencyMs: number; meta: Record<string, unknown> | null; error: { plantel: string; name: string; message: string; code: string | null; statusCode: number | null; responseBody: string | null } | null }>
+    sourceFailures?: Array<{ plantel: string; name: string; message: string; code: string | null; statusCode: number | null; responseBody: string | null }>
     cached?: boolean
     buildId?: string
     snapshotVersion?: number

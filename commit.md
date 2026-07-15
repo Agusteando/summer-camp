@@ -1,1 +1,1 @@
-fix: corregir agentes financieros y conservar resultados parciales de Aurora
+Corrige la carga agregada de alumnos y simplifica el diagnóstico técnico

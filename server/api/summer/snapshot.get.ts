@@ -18,24 +18,6 @@ export default defineEventHandler(async (event) => {
 
   try {
     const source = await loadSummerSource()
-    if (!source.students.length) {
-      const error: any = new Error('La fuente de inscripción respondió sin alumnos para los conceptos y planteles configurados.')
-      error.code = 'SUMMER_SOURCE_EMPTY'
-      error.diagnostic = {
-        source: source.source,
-        reachable: source.reachable,
-        partial: source.partial,
-        requestedPlanteles: source.requestedPlanteles,
-        successfulPlanteles: source.successfulPlanteles,
-        emptyPlanteles: source.emptyPlanteles,
-        failedPlanteles: source.failedPlanteles,
-        failures: source.failures,
-        plantelResults: source.plantelResults,
-        configurationCorrections: source.configurationCorrections,
-        students: 0
-      }
-      throw error
-    }
     stage = 'snapshot_pipeline'
     const snapshot = await buildSnapshot(date, source.students, source)
     setResponseHeader(event, 'X-Summer-Source', source.source)

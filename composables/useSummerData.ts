@@ -64,15 +64,15 @@ function validateSnapshot(value: unknown): asserts value is SnapshotResponse {
 }
 
 export const useSummerData = () => {
-  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-v11', () => null)
+  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-v12', () => null)
   const selectedDate = useState('summer-date', localDate)
-  const loading = useState('summer-loading-v11', () => false)
-  const updating = useState('summer-updating-v11', () => false)
-  const error = useState<string | null>('summer-error-v11', () => null)
-  const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic-v11', () => null)
-  const clientTrace = useState<ClientTraceEvent[]>('summer-client-trace-v11', () => [])
-  const lastUpdatedAt = useState<string | null>('summer-last-updated-v11', () => null)
-  const loadLifecycle = useState<SummerLoadLifecycle>('summer-load-lifecycle-v11', () => ({
+  const loading = useState('summer-loading-v12', () => false)
+  const updating = useState('summer-updating-v12', () => false)
+  const error = useState<string | null>('summer-error-v12', () => null)
+  const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic-v12', () => null)
+  const clientTrace = useState<ClientTraceEvent[]>('summer-client-trace-v12', () => [])
+  const lastUpdatedAt = useState<string | null>('summer-last-updated-v12', () => null)
+  const loadLifecycle = useState<SummerLoadLifecycle>('summer-load-lifecycle-v12', () => ({
     composableCreatedAt: new Date().toISOString(),
     clientMountedAt: null,
     clientMountedSources: [],
@@ -86,7 +86,7 @@ export const useSummerData = () => {
     lastLoadDurationMs: null,
     lastLoadError: null
   }))
-  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-v11', () => null)
+  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-v12', () => null)
   const queue = useAttendanceQueue()
   const device = useDeviceIdentity()
   const config = useRuntimeConfig()
@@ -95,7 +95,7 @@ export const useSummerData = () => {
     clientTrace.value = [...clientTrace.value.slice(-119), { at: new Date().toISOString(), event, ...(details === undefined ? {} : { details: safeDetails(details) }) }]
   }
 
-  const cacheKey = () => `summer-snapshot:v11:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:v12:${selectedDate.value}`
 
   const noteClientMounted = (source: string) => {
     if (!import.meta.client) return

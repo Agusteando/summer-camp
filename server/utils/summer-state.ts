@@ -126,7 +126,9 @@ export const buildSnapshot = async (date: string, sourceStudents: SourceStudent[
       requestedPlanteles: sourceMeta.requestedPlanteles,
       successfulPlanteles: sourceMeta.successfulPlanteles,
       emptyPlanteles: sourceMeta.emptyPlanteles,
-      configurationCorrections: sourceMeta.configurationCorrections
+      configurationCorrections: sourceMeta.configurationCorrections,
+      sourcePlantelResults: sourceMeta.plantelResults,
+      sourceFailures: sourceMeta.failures
     }
   }
 }
