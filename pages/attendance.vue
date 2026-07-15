@@ -11,14 +11,18 @@ const start = new Date(today)
 start.setDate(start.getDate() - 14)
 const from = ref(start.toISOString().slice(0, 10))
 const busy = ref(false)
+const error = ref('')
 const days = ref<any[]>([])
 const expanded = ref<string | null>(null)
 
 const load = async () => {
   busy.value = true
+  error.value = ''
   try {
     const response: any = await $fetch('/api/summer/attendance/history', { query: { from: from.value, to: to.value }, cache: 'no-store' })
     days.value = response.days || []
+  } catch (cause: any) {
+    error.value = cause?.data?.message || cause?.message || 'No se pudo cargar el historial.'
   } finally { busy.value = false }
 }
 
@@ -81,6 +85,11 @@ onMounted(async () => {
     </section>
 
     <div v-if="busy" class="skeleton-stack"><div v-for="item in 5" :key="item" class="history-skeleton" /></div>
+    <div v-else-if="error" class="load-error-panel">
+      <span><X :size="30" /></span>
+      <div><strong>No se pudo cargar el historial</strong><p>{{ error }}</p></div>
+      <button class="secondary-button" @click="load">Reintentar</button>
+    </div>
     <div v-else-if="visibleDays.length" class="history-list">
       <article v-for="day in visibleDays" :key="day.date" class="history-day">
         <button class="history-day__summary" @click="expanded = expanded === day.date ? null : day.date">

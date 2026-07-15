@@ -62,3 +62,37 @@ export type AttendanceMutation = {
   status: Exclude<AttendanceStatus, 'unmarked'>
   clientTimestamp: string
 }
+
+export type ClientRequestDiagnostic = {
+  url: string
+  startedAt: string
+  finishedAt: string
+  durationMs: number
+  ok: boolean
+  statusCode: number | null
+  statusMessage: string | null
+  message: string | null
+  responseData: unknown
+  stack: string | null
+}
+
+export type ServerDiagnosticCheck = {
+  key: string
+  label: string
+  ok: boolean
+  latencyMs: number
+  details?: unknown
+  error?: Record<string, unknown>
+}
+
+export type SummerDiagnosticsResponse = {
+  ok: boolean
+  requestId: string
+  checkedAt: string
+  latencyMs: number
+  date: string
+  config: Record<string, unknown>
+  assumptions: Record<string, string>
+  sourceSummary: Record<string, unknown> | null
+  checks: ServerDiagnosticCheck[]
+}

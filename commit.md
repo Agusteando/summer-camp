@@ -1,1 +1,1 @@
-Elimina migraciones DDL y deja la creación de tablas como operación externa
+feat: rediseñar el panel de asistencia y añadir diagnóstico temporal visible

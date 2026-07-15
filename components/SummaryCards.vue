@@ -11,6 +11,8 @@ const props = defineProps<{
   selectedCampus: CampusFilter
   selectedPlantel: string
   selectedProgram: 'all' | ProgramKind
+  loading?: boolean
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +29,7 @@ const modes: Array<{ program: ModeProgram; label: string; code: string }> = [
 
 const totalStudents = computed(() => props.students.length)
 const unassigned = computed(() => props.students.filter((student) => student.program === 'unassigned').length)
+const unavailable = computed(() => Boolean(props.error && !props.students.length))
 
 const cards = computed(() => campusOrder.flatMap((campus) => modes.map((mode) => {
   const rows = props.students.filter((student) => student.campus === campus && student.program === mode.program)
@@ -34,16 +37,16 @@ const cards = computed(() => campusOrder.flatMap((campus) => modes.map((mode) =>
   const absent = rows.filter((student) => student.attendance === 'absent').length
   const unmarked = rows.filter((student) => student.attendance === 'unmarked').length
   const food = rows.filter((student) => student.mealCount > 0).length
-  const marked = present + absent
 
   return {
     campus,
     ...mode,
     total: rows.length,
     present,
+    absent,
     unmarked,
     food,
-    percent: rows.length ? Math.round((marked / rows.length) * 100) : 0
+    percent: rows.length ? Math.round((present / rows.length) * 100) : 0
   }
 })))
 
@@ -55,6 +58,7 @@ const plantelGroups = computed(() => campusOrder.map((campus) => ({
 })))
 
 const selectCard = (campus: CampusName, program: ModeProgram) => {
+  if (props.loading || unavailable.value) return
   const clear = props.selectedCampus === campus && props.selectedProgram === program && props.selectedPlantel === 'all'
   emit('campus', clear ? 'all' : campus)
   emit('program', clear ? 'all' : program)
@@ -75,19 +79,17 @@ const showUnassigned = () => {
 </script>
 
 <template>
-  <section class="campus-kpis" aria-label="Resumen por campus y modalidad">
+  <section class="campus-kpis" aria-label="Inscripciones por campus y modalidad">
     <header class="campus-kpis__header">
       <div>
-        <span>Resumen</span>
-        <strong>{{ totalStudents }} alumnos</strong>
+        <span>Inscripciones por campus y modalidad</span>
+        <strong>{{ loading && !students.length ? 'Cargando alumnos…' : `${totalStudents} inscritos en Summer Camp` }}</strong>
       </div>
       <div class="campus-kpis__actions">
         <button v-if="unassigned" class="campus-kpis__pending" :class="{ 'is-active': selectedProgram === 'unassigned' }" @click="showUnassigned">
           {{ unassigned }} sin modalidad
         </button>
-        <button v-if="selectedCampus !== 'all' || selectedPlantel !== 'all' || selectedProgram !== 'all'" @click="reset">
-          Ver todo
-        </button>
+        <button v-if="selectedCampus !== 'all' || selectedPlantel !== 'all' || selectedProgram !== 'all'" @click="reset">Ver todos</button>
       </div>
     </header>
 
@@ -101,27 +103,36 @@ const showUnassigned = () => {
           `mode-kpi--${card.program}`,
           {
             'is-selected': selectedCampus === card.campus && selectedProgram === card.program,
-            'is-muted': (selectedCampus !== 'all' && selectedCampus !== card.campus) || (selectedProgram !== 'all' && selectedProgram !== card.program)
+            'is-muted': (selectedCampus !== 'all' && selectedCampus !== card.campus) || (selectedProgram !== 'all' && selectedProgram !== card.program),
+            'is-loading': loading && !students.length,
+            'is-unavailable': unavailable
           }
         ]"
         @click="selectCard(card.campus, card.program)"
       >
-        <span class="mode-kpi__topline">
-          <span>{{ card.campus }}</span>
-          <b>{{ card.code }}</b>
-        </span>
+        <span class="mode-kpi__topline"><span>{{ card.campus }}</span><b>{{ card.code }}</b></span>
         <strong class="mode-kpi__title">{{ card.label }}</strong>
-        <span class="mode-kpi__total">{{ card.total }}</span>
-        <span class="mode-kpi__metrics">
-          <span><CheckCircle2 :size="14" />{{ card.present }}</span>
-          <span><Utensils :size="14" />{{ card.food }}</span>
-        </span>
+
+        <div class="mode-kpi__enrollment">
+          <strong>{{ loading && !students.length || unavailable ? '—' : card.total }}</strong>
+          <span>inscritos</span>
+        </div>
+
+        <div class="mode-kpi__attendance">
+          <span>Asistencia hoy</span>
+          <strong>{{ loading && !students.length || unavailable ? '— / —' : `${card.present} / ${card.total}` }}</strong>
+        </div>
+
         <span class="mode-kpi__progress" aria-hidden="true"><i :style="{ width: `${card.percent}%` }" /></span>
-        <span class="mode-kpi__pending">{{ card.unmarked }} por marcar</span>
+
+        <div class="mode-kpi__footer">
+          <span><CheckCircle2 :size="14" />{{ unavailable ? '—' : card.unmarked }} por marcar</span>
+          <span><Utensils :size="14" />{{ unavailable ? '—' : card.food }} con alimento</span>
+        </div>
       </button>
     </div>
 
-    <div class="campus-kpis__plantel-groups" aria-label="Conteo por plantel">
+    <div v-if="summaries.length" class="campus-kpis__plantel-groups" aria-label="Inscripción por plantel">
       <div v-for="group in plantelGroups" :key="group.campus" class="plantel-kpis">
         <span>{{ group.campus }}</span>
         <div>
@@ -136,5 +147,7 @@ const showUnassigned = () => {
         </div>
       </div>
     </div>
+    <div v-else-if="loading" class="plantel-kpis-skeleton"><span v-for="item in 6" :key="item" /></div>
+    <div v-else-if="unavailable" class="campus-kpis__unavailable">Los cuatro indicadores están visibles, pero no hay datos porque falló la carga de la lista.</div>
   </section>
 </template>

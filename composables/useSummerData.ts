@@ -1,4 +1,4 @@
-import type { AttendanceMutation, AttendanceStatus, SnapshotResponse, SummerStudent } from '~/types/summer'
+import type { AttendanceMutation, AttendanceStatus, ClientRequestDiagnostic, SnapshotResponse, SummerStudent } from '~/types/summer'
 
 const localDate = () => {
   const now = new Date()
@@ -6,19 +6,40 @@ const localDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10)
 }
 
+const text = (value: unknown, max = 12000) => {
+  const result = String(value ?? '').trim()
+  return result ? result.slice(0, max) : null
+}
+
+const serializeClientError = (cause: any, url: string, startedAt: string, started: number): ClientRequestDiagnostic => ({
+  url,
+  startedAt,
+  finishedAt: new Date().toISOString(),
+  durationMs: Date.now() - started,
+  ok: false,
+  statusCode: Number.isFinite(Number(cause?.statusCode || cause?.status || cause?.response?.status))
+    ? Number(cause?.statusCode || cause?.status || cause?.response?.status)
+    : null,
+  statusMessage: text(cause?.statusMessage || cause?.response?.statusText, 500),
+  message: text(cause?.data?.message || cause?.message, 4000),
+  responseData: cause?.data ?? null,
+  stack: text(cause?.stack, 12000)
+})
+
 export const useSummerData = () => {
   const snapshot = useState<SnapshotResponse | null>('summer-snapshot', () => null)
   const selectedDate = useState('summer-date', localDate)
   const loading = useState('summer-loading', () => false)
   const updating = useState('summer-updating', () => false)
   const error = useState<string | null>('summer-error', () => null)
+  const requestDiagnostic = useState<ClientRequestDiagnostic | null>('summer-request-diagnostic', () => null)
   const lastUpdatedAt = useState<string | null>('summer-last-updated', () => null)
   const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller', () => null)
   const queue = useAttendanceQueue()
   const device = useDeviceIdentity()
   const config = useRuntimeConfig()
 
-  const cacheKey = () => `summer-snapshot:v2:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:v3:${selectedDate.value}`
 
   const recalculateSummaries = () => {
     if (!snapshot.value) return
@@ -72,19 +93,46 @@ export const useSummerData = () => {
   }
 
   const refresh = async (background = false) => {
-    if (updating.value) return
+    if (updating.value || (!background && loading.value)) return
     if (background) updating.value = true
     else loading.value = true
     error.value = null
+    const url = `/api/summer/snapshot?date=${encodeURIComponent(selectedDate.value)}`
+    const started = Date.now()
+    const startedAt = new Date().toISOString()
+
     try {
-      const result = await $fetch<SnapshotResponse>('/api/summer/snapshot', { query: { date: selectedDate.value }, cache: 'no-store' })
+      const result = await $fetch<SnapshotResponse>('/api/summer/snapshot', {
+        query: { date: selectedDate.value },
+        cache: 'no-store',
+        retry: 0
+      })
       snapshot.value = result
       lastUpdatedAt.value = result.meta.generatedAt
+      requestDiagnostic.value = {
+        url,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - started,
+        ok: true,
+        statusCode: 200,
+        statusMessage: 'OK',
+        message: null,
+        responseData: {
+          students: result.students.length,
+          planteles: result.summaries.length,
+          source: result.meta.source,
+          partial: result.meta.partial,
+          failedPlanteles: result.meta.failedPlanteles
+        },
+        stack: null
+      }
       if (import.meta.client) localStorage.setItem(cacheKey(), JSON.stringify(result))
       await applyPending()
       if (import.meta.client) void queue.flush()
     } catch (cause: any) {
-      error.value = cause?.data?.message || cause?.message || 'No se pudo actualizar.'
+      requestDiagnostic.value = serializeClientError(cause, url, startedAt, started)
+      error.value = requestDiagnostic.value.message || 'No se pudo actualizar.'
     } finally {
       loading.value = false
       updating.value = false
@@ -153,6 +201,7 @@ export const useSummerData = () => {
     loading,
     updating,
     error,
+    requestDiagnostic,
     lastUpdatedAt,
     pendingCount: queue.pendingCount,
     flushing: queue.flushing,

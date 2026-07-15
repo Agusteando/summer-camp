@@ -1,4 +1,4 @@
-const CACHE = 'summer-camp-shell-v5'
+const CACHE = 'summer-camp-shell-v7'
 const CORE = [
   '/', '/attendance', '/setup', '/manifest.webmanifest', '/brand/iecs-iedis-logo.png',
   '/icons/dinos.png', '/icons/dinos-192.png', '/icons/dinos-512.png', '/icons/abejas.png', '/icons/leones.png', '/icons/tigres.png', '/icons/pandas.png',

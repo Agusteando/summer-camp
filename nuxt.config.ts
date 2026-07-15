@@ -47,7 +47,8 @@ export default defineNuxtConfig({
     public: {
       refreshIntervalMs: Number(process.env.NUXT_PUBLIC_REFRESH_INTERVAL_MS || 120000),
       healthIntervalMs: Number(process.env.NUXT_PUBLIC_HEALTH_INTERVAL_MS || 45000),
-      appVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'local'
+      appVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'local',
+      diagnosticsEnabled: process.env.NUXT_PUBLIC_SUMMER_DIAGNOSTICS !== 'false'
     }
   },
   nitro: {

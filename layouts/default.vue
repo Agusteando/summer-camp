@@ -6,6 +6,7 @@ onMounted(() => connectivity.start())
 <template>
   <div class="app-shell">
     <AppHeader />
+    <AppDiagnostics />
     <main class="app-main">
       <slot />
     </main>

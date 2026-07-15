@@ -173,7 +173,12 @@ onMounted(async () => {
       </section>
     </div>
     <div v-else-if="summer.snapshot.value" class="empty-state"><img src="/icons/pandas.png" alt=""><strong>Todo listo</strong></div>
-    <div v-else class="skeleton-stack"><div v-for="item in 6" :key="item" class="student-skeleton" /></div>
+    <div v-else-if="summer.loading.value" class="skeleton-stack"><div v-for="item in 6" :key="item" class="student-skeleton" /></div>
+    <div v-else class="load-error-panel">
+      <span><X :size="30" /></span>
+      <div><strong>No se pudo cargar la lista</strong><p>{{ summer.error.value || 'La solicitud terminó sin datos.' }}</p></div>
+      <button class="secondary-button" @click="summer.refresh(false)">Reintentar</button>
+    </div>
 
     <div v-if="selected.length && tab !== 'age'" class="bulk-dock">
       <span>{{ selected.length }}</span>
