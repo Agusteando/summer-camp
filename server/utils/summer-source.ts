@@ -1,5 +1,6 @@
 import { financialQuery } from './db'
 import { demoStudents } from './demo'
+import { PLANTEL_ORDER } from '~/shared/catalog'
 
 export type SourceStudent = {
   matricula: string
@@ -22,7 +23,7 @@ type SourceResult = {
 const clean = (value: unknown, max = 255) => String(value || '').trim().slice(0, max)
 const normalizeMatricula = (value: unknown) => clean(value, 64).toUpperCase().replace(/\s+/g, '')
 const conceptIds = () => String(useRuntimeConfig().summerConceptIds || '986,987,988').split(',').map(Number).filter(Number.isFinite)
-const planteles = () => String(useRuntimeConfig().summerPlanteles || '').split(',').map((item) => clean(item, 40).toUpperCase()).filter(Boolean)
+const planteles = () => String(useRuntimeConfig().summerPlanteles || PLANTEL_ORDER.join(',')).split(',').map((item) => clean(item, 40).toUpperCase()).filter(Boolean)
 const isDemo = () => String(useRuntimeConfig().demoMode || '').toLowerCase() === 'true'
 
 const preferredConcept = (left: number, right: number) => Math.max(Number(left || 0), Number(right || 0))

@@ -1,7 +1,7 @@
 import { appQuery } from './db'
 import { createStudentAttendanceToken, createStudentPhotoToken } from './tokens'
 import { ageFromCurp } from '~/shared/curp'
-import { ageGroupFor, campusForPlantel, mealCountFromConcept, mealPlanFromConcept, PLANTEL_LABELS } from '~/shared/catalog'
+import { ageGroupFor, campusForPlantel, mealCountFromConcept, mealPlanFromConcept, plantelSortIndex, PLANTEL_LABELS } from '~/shared/catalog'
 import type { AttendanceMutation, MealPlan, ProgramKind, SnapshotResponse, SummerStudent } from '~/types/summer'
 import type { SourceStudent } from './summer-source'
 
@@ -113,7 +113,10 @@ export const buildSnapshot = async (date: string, sourceStudents: SourceStudent[
   return {
     date,
     students,
-    summaries: Array.from(summaryMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'es')),
+    summaries: Array.from(summaryMap.values()).sort((a, b) => {
+      if (a.campus !== b.campus) return a.campus === 'Toluca' ? -1 : 1
+      return plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.plantel.localeCompare(b.plantel, 'es')
+    }),
     meta: {
       generatedAt: new Date().toISOString(),
       source: sourceMeta.source,
@@ -204,7 +207,12 @@ export const readAttendanceHistory = async (from: string, to: string, sourceStud
     const current = byDate.get(row.date) || { date: row.date, present: 0, absent: 0, total: 0, rows: [] }
     current[row.status] += 1
     current.total += 1
-    current.rows.push({ ...row, name: student?.nombreCompleto || row.matricula, plantelLabel: PLANTEL_LABELS[row.plantel] || row.plantel })
+    current.rows.push({
+      ...row,
+      name: student?.nombreCompleto || row.matricula,
+      plantelLabel: PLANTEL_LABELS[row.plantel] || row.plantel,
+      campus: campusForPlantel(row.plantel)
+    })
     byDate.set(row.date, current)
   })
   return Array.from(byDate.values()).sort((a, b) => b.date.localeCompare(a.date))

@@ -18,7 +18,7 @@ export const useSummerData = () => {
   const device = useDeviceIdentity()
   const config = useRuntimeConfig()
 
-  const cacheKey = () => `summer-snapshot:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:v2:${selectedDate.value}`
 
   const recalculateSummaries = () => {
     if (!snapshot.value) return

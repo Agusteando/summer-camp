@@ -1,45 +1,86 @@
 <script setup lang="ts">
-import { CalendarDays, CheckCircle2, CloudOff, UsersRound } from '@lucide/vue'
-import { AGE_GROUPS } from '~/shared/catalog'
-import type { SummerStudent } from '~/types/summer'
+import { CalendarDays, CheckCircle2, CloudOff, MapPin, School2, UsersRound } from '@lucide/vue'
+import { AGE_GROUPS, plantelSortIndex } from '~/shared/catalog'
+import type { CampusName, PlantelSummary, SummerStudent } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
-const selectedPlantel = ref('all')
+const scope = useSummerScope()
 const search = ref('')
 const group = ref('all')
 const program = ref('all')
 
+const summaries = computed(() => summer.snapshot.value?.summaries || [])
 const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('es-MX'))
+
+const plantelOptions = computed(() => summaries.value
+  .filter((summary) => scope.campus.value === 'all' || summary.campus === scope.campus.value)
+  .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.plantel.localeCompare(b.plantel, 'es')))
+
 const filtered = computed(() => {
   const rows = summer.snapshot.value?.students || []
   return rows.filter((student) => {
-    if (selectedPlantel.value !== 'all' && student.plantel !== selectedPlantel.value) return false
+    if (!scope.matches(student)) return false
     if (group.value !== 'all' && student.ageGroup !== group.value) return false
     if (program.value !== 'all' && student.program !== program.value) return false
-    if (normalizedSearch.value && !`${student.name} ${student.matricula}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)) return false
+    if (normalizedSearch.value && !`${student.name} ${student.matricula} ${student.plantel}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)) return false
     return true
   })
 })
 
 const groupOrder = ['group-1', 'group-2', 'group-3', 'group-4', 'group-5', 'missing-age', 'out-of-range']
+const campusOrder: CampusName[] = ['Toluca', 'Metepec']
+
 const groupMeta = (key: string) => {
   const known = AGE_GROUPS.find((item) => item.key === key)
   if (known) return { label: `${known.label} años`, icon: known.icon }
-  return key === 'missing-age' ? { label: 'Edad pendiente', icon: '/icons/dinos.png' } : { label: 'Fuera de rango', icon: '/icons/pandas.png' }
+  return key === 'missing-age'
+    ? { label: 'Edad pendiente', icon: '/icons/dinos.png' }
+    : { label: 'Fuera de rango', icon: '/icons/pandas.png' }
 }
-const grouped = computed(() => groupOrder.flatMap((key) => {
-  const students = filtered.value.filter((student) => student.ageGroup === key)
+
+const groupsFor = (rows: SummerStudent[]) => groupOrder.flatMap((key) => {
+  const students = rows.filter((student) => student.ageGroup === key)
   return students.length ? [{ key, ...groupMeta(key), students }] : []
+})
+
+const campusSections = computed(() => campusOrder.flatMap((campus) => {
+  const rows = filtered.value.filter((student) => student.campus === campus)
+  if (!rows.length) return []
+  const plantelMap = new Map<string, number>()
+  rows.forEach((student) => plantelMap.set(student.plantel, (plantelMap.get(student.plantel) || 0) + 1))
+  const planteles = Array.from(plantelMap.entries())
+    .map(([plantel, total]) => ({ plantel, total }))
+    .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.plantel.localeCompare(b.plantel, 'es'))
+  return [{
+    campus,
+    rows,
+    groups: groupsFor(rows),
+    planteles,
+    present: rows.filter((student) => student.attendance === 'present').length,
+    unmarked: rows.filter((student) => student.attendance === 'unmarked').length
+  }]
 }))
+
 const present = computed(() => filtered.value.filter((student) => student.attendance === 'present').length)
 const marked = computed(() => filtered.value.filter((student) => student.attendance !== 'unmarked').length)
 const percent = computed(() => filtered.value.length ? Math.round((marked.value / filtered.value.length) * 100) : 0)
+const scopeLabel = computed(() => {
+  if (scope.plantel.value !== 'all') return `Plantel ${scope.plantel.value}`
+  if (scope.campus.value !== 'all') return `Campus ${scope.campus.value}`
+  return 'Toluca + Metepec'
+})
 
+const setCampus = (campus: 'all' | CampusName) => scope.setCampus(campus, summaries.value)
+const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
 const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
 
+watch(summaries, (value) => scope.reconcile(value), { deep: true })
+
 onMounted(async () => {
+  scope.initialize()
   await summer.load()
+  scope.reconcile(summaries.value)
   summer.startPolling()
 })
 </script>
@@ -51,6 +92,7 @@ onMounted(async () => {
         <span class="day-hero__kicker">Asistencia</span>
         <h1>Hoy</h1>
         <p>{{ present }} presentes · {{ filtered.length - marked }} por marcar</p>
+        <span class="day-hero__scope"><School2 :size="15" />{{ scopeLabel }}</span>
       </div>
       <label class="date-control">
         <CalendarDays :size="19" />
@@ -67,22 +109,55 @@ onMounted(async () => {
     </div>
 
     <template v-if="summer.snapshot.value">
-      <SummaryCards :summaries="summer.snapshot.value.summaries" :selected="selectedPlantel" @select="selectedPlantel = $event" />
-      <FilterDock v-model:search="search" v-model:group="group" v-model:program="program" />
+      <SummaryCards
+        :summaries="summaries"
+        :selected-campus="scope.campus.value"
+        :selected-plantel="scope.plantel.value"
+        @campus="setCampus"
+        @plantel="setPlantel"
+      />
+      <FilterDock
+        v-model:search="search"
+        v-model:group="group"
+        v-model:program="program"
+        :plantel="scope.plantel.value"
+        :planteles="plantelOptions"
+        @update:plantel="setPlantel"
+      />
 
       <section class="attendance-countbar">
         <div><UsersRound :size="18" /><strong>{{ filtered.length }}</strong><span>alumnos</span></div>
         <div><CheckCircle2 :size="18" /><strong>{{ present }}</strong><span>presentes</span></div>
+        <span class="attendance-countbar__scope">{{ scopeLabel }}</span>
       </section>
 
-      <div v-if="filtered.length" class="age-sections">
-        <section v-for="section in grouped" :key="section.key" class="age-section">
-          <header class="age-section__header">
-            <img :src="section.icon" alt="">
-            <div><h2>{{ section.label }}</h2><span>{{ section.students.length }}</span></div>
+      <div v-if="filtered.length" class="campus-lists">
+        <section v-for="campusSection in campusSections" :key="campusSection.campus" class="campus-list">
+          <header class="campus-list__header">
+            <span class="campus-list__icon"><School2 :size="23" /></span>
+            <div class="campus-list__identity">
+              <span>Campus</span>
+              <h2>{{ campusSection.campus }}</h2>
+              <div class="campus-list__planteles">
+                <span v-for="plantel in campusSection.planteles" :key="plantel.plantel"><MapPin :size="12" />{{ plantel.plantel }} · {{ plantel.total }}</span>
+              </div>
+            </div>
+            <div class="campus-list__numbers">
+              <strong>{{ campusSection.present }}/{{ campusSection.rows.length }}</strong>
+              <span>{{ campusSection.unmarked }} por marcar</span>
+            </div>
           </header>
-          <div class="student-grid">
-            <StudentAttendanceCard v-for="student in section.students" :key="student.matricula" :student="student" @mark="mark" />
+
+          <div class="age-sections">
+            <section v-for="section in campusSection.groups" :key="`${campusSection.campus}-${section.key}`" class="age-section">
+              <header class="age-section__header">
+                <img :src="section.icon" alt="">
+                <div><h3>{{ section.label }}</h3><span>{{ section.students.length }}</span></div>
+              </header>
+              <div class="student-grid">
+                <StudentAttendanceCard v-for="student in section.students" :key="student.matricula" :student="student" @mark="mark" />
+              </div>
+            </section>
           </div>
         </section>
       </div>

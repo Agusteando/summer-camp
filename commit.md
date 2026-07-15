@@ -1,1 +1,1 @@
-Elimina la autenticación y corrige la instalación local de Summer Camp
+Separa alumnos por campus y añade filtros rápidos por plantel

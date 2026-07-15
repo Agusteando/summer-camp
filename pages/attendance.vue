@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { CalendarRange, Check, ChevronDown, ChevronUp, X } from '@lucide/vue'
+import { CalendarRange, Check, ChevronDown, ChevronUp, School2, X } from '@lucide/vue'
+import { campusForPlantel } from '~/shared/catalog'
+import type { CampusName } from '~/types/summer'
+
+const summer = useSummerData()
+const scope = useSummerScope()
 const today = new Date()
 const to = ref(today.toISOString().slice(0, 10))
 const start = new Date(today)
@@ -16,8 +21,41 @@ const load = async () => {
     days.value = response.days || []
   } finally { busy.value = false }
 }
+
+const visibleDays = computed(() => days.value.flatMap((day) => {
+  const rows = (day.rows || []).filter((row: any) => {
+    const campus = row.campus || campusForPlantel(row.plantel)
+    if (scope.campus.value !== 'all' && campus !== scope.campus.value) return false
+    if (scope.plantel.value !== 'all' && row.plantel !== scope.plantel.value) return false
+    return true
+  })
+  if (!rows.length) return []
+  return [{
+    ...day,
+    rows,
+    total: rows.length,
+    present: rows.filter((row: any) => row.status === 'present').length,
+    absent: rows.filter((row: any) => row.status === 'absent').length
+  }]
+}))
+
+const groupedRows = (rows: any[]) => (['Toluca', 'Metepec'] as CampusName[]).flatMap((campus) => {
+  const students = rows.filter((row) => (row.campus || campusForPlantel(row.plantel)) === campus)
+  return students.length ? [{ campus, students }] : []
+})
+
+const summaries = computed(() => summer.snapshot.value?.summaries || [])
+const setCampus = (campus: 'all' | CampusName) => scope.setCampus(campus, summaries.value)
+const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
 const formatDate = (value: string) => new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${value}T12:00:00`))
-onMounted(load)
+
+watch(summaries, (value) => scope.reconcile(value), { deep: true })
+
+onMounted(async () => {
+  scope.initialize()
+  await Promise.all([load(), summer.load()])
+  scope.reconcile(summaries.value)
+})
 </script>
 
 <template>
@@ -27,6 +65,15 @@ onMounted(load)
       <CalendarRange :size="34" />
     </section>
 
+    <CampusScopeBar
+      v-if="summaries.length"
+      :summaries="summaries"
+      :selected-campus="scope.campus.value"
+      :selected-plantel="scope.plantel.value"
+      @campus="setCampus"
+      @plantel="setPlantel"
+    />
+
     <section class="range-card">
       <label><span>Desde</span><input v-model="from" type="date"></label>
       <label><span>Hasta</span><input v-model="to" type="date"></label>
@@ -34,8 +81,8 @@ onMounted(load)
     </section>
 
     <div v-if="busy" class="skeleton-stack"><div v-for="item in 5" :key="item" class="history-skeleton" /></div>
-    <div v-else-if="days.length" class="history-list">
-      <article v-for="day in days" :key="day.date" class="history-day">
+    <div v-else-if="visibleDays.length" class="history-list">
+      <article v-for="day in visibleDays" :key="day.date" class="history-day">
         <button class="history-day__summary" @click="expanded = expanded === day.date ? null : day.date">
           <div>
             <span>{{ formatDate(day.date) }}</span>
@@ -49,11 +96,14 @@ onMounted(load)
           </div>
         </button>
         <div v-if="expanded === day.date" class="history-rows">
-          <div v-for="row in day.rows" :key="`${day.date}-${row.matricula}`" class="history-row">
-            <span class="history-row__icon" :class="`is-${row.status}`"><Check v-if="row.status === 'present'" :size="16" /><X v-else :size="16" /></span>
-            <div><strong>{{ row.name }}</strong><span>{{ row.plantelLabel }}</span></div>
-            <small>{{ row.actorName }}</small>
-          </div>
+          <section v-for="campusSection in groupedRows(day.rows)" :key="campusSection.campus" class="history-campus">
+            <header><School2 :size="16" /><strong>{{ campusSection.campus }}</strong><span>{{ campusSection.students.length }}</span></header>
+            <div v-for="row in campusSection.students" :key="`${day.date}-${row.matricula}`" class="history-row">
+              <span class="history-row__icon" :class="`is-${row.status}`"><Check v-if="row.status === 'present'" :size="16" /><X v-else :size="16" /></span>
+              <div><strong>{{ row.name }}</strong><span>{{ row.plantel }}</span></div>
+              <small>{{ row.actorName }}</small>
+            </div>
+          </section>
         </div>
       </article>
     </div>

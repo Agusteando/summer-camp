@@ -1,13 +1,15 @@
 export type ProgramKind = 'husky_dreamers' | 'clinica_futbol' | 'unassigned'
 export type MealPlan = 'none' | 'comida' | 'cena' | 'comida_cena' | 'pending_one'
 export type AttendanceStatus = 'present' | 'absent' | 'unmarked'
+export type CampusName = 'Metepec' | 'Toluca'
+export type CampusFilter = CampusName | 'all'
 
 export type SummerStudent = {
   matricula: string
   name: string
   plantel: string
   plantelLabel: string
-  campus: 'Metepec' | 'Toluca' | 'Otro'
+  campus: CampusName
   curp: string
   age: number | null
   ageSource: 'curp' | 'manual' | 'missing'
@@ -27,7 +29,7 @@ export type SummerStudent = {
 export type PlantelSummary = {
   plantel: string
   label: string
-  campus: string
+  campus: CampusName
   total: number
   present: number
   absent: number

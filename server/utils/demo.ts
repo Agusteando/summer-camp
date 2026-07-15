@@ -4,7 +4,7 @@ const names = [
   'Renata Jiménez Soto', 'Sebastián Mendoza Gil', 'Victoria Navarro León', 'Diego Rojas Luna',
   'Mariana Campos Rey', 'Nicolás Vega Solís', 'Ximena Paredes Cano', 'Andrés Salazar Núñez'
 ]
-const planteles = ['PREEM', 'GM', 'PM', 'SM', 'PREET', 'PT', 'ST']
+const planteles = ['CT', 'PT', 'ST', 'PREEM', 'PREET', 'CM', 'DM', 'CO', 'DC', 'GM', 'PM', 'SM', 'IS', 'ISM']
 const concepts = [986, 987, 988]
 
 const fakeCurp = (index: number) => {
@@ -14,7 +14,7 @@ const fakeCurp = (index: number) => {
   return `HELS${String(year).padStart(2, '0')}${month}${day}MDFRPF0${index % 10}`.slice(0, 18)
 }
 
-export const demoStudents = () => Array.from({ length: 42 }, (_, index) => ({
+export const demoStudents = () => Array.from({ length: 56 }, (_, index) => ({
   matricula: `SC26${String(index + 1).padStart(4, '0')}`,
   nombreCompleto: names[index % names.length],
   plantel: planteles[index % planteles.length],

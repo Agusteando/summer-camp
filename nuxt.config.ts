@@ -26,7 +26,7 @@ export default defineNuxtConfig({
     summerYear: process.env.SUMMER_YEAR || '2026',
     summerCycle: process.env.SUMMER_CYCLE || '2026',
     summerConceptIds: process.env.SUMMER_CONCEPT_IDS || '986,987,988',
-    summerPlanteles: process.env.SUMMER_PLANTELES || 'PREEM,GM,PM,SM,PREET,PT,ST',
+    summerPlanteles: process.env.SUMMER_PLANTELES || 'PREEM,PREET,CT,CM,DM,CO,DC,GM,PM,PT,SM,ST,IS,ISM',
     summerSourceMode: process.env.SUMMER_SOURCE_MODE || 'aurora',
     auroraBaseUrl: process.env.AURORA_BASE_URL,
     auroraApiToken: process.env.AURORA_API_TOKEN,

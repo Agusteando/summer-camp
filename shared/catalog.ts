@@ -1,20 +1,20 @@
-import type { MealPlan, ProgramKind } from '~/types/summer'
+import type { CampusName, MealPlan, ProgramKind } from '~/types/summer'
 
-export const PLANTEL_LABELS: Record<string, string> = {
-  PREEM: 'Preescolar Metepec',
-  GM: 'Guardería Metepec',
-  PM: 'Primaria Metepec',
-  SM: 'Secundaria Metepec',
-  PREET: 'Preescolar Toluca',
-  PT: 'Primaria Toluca',
-  ST: 'Secundaria Toluca'
+export const TOLUCA_PLANTELES = ['CT', 'PT', 'ST'] as const
+export const PLANTEL_ORDER = ['CT', 'PT', 'ST', 'PREEM', 'PREET', 'CM', 'DM', 'CO', 'DC', 'GM', 'PM', 'SM', 'IS', 'ISM'] as const
+
+export const PLANTEL_LABELS: Record<string, string> = Object.fromEntries(
+  PLANTEL_ORDER.map((plantel) => [plantel, plantel])
+)
+
+export const campusForPlantel = (plantel: string): CampusName => {
+  const value = String(plantel || '').trim().toUpperCase()
+  return TOLUCA_PLANTELES.includes(value as typeof TOLUCA_PLANTELES[number]) ? 'Toluca' : 'Metepec'
 }
 
-export const campusForPlantel = (plantel: string): 'Metepec' | 'Toluca' | 'Otro' => {
-  const value = String(plantel || '').toUpperCase()
-  if (['PREEM', 'GM', 'PM', 'SM'].includes(value) || value.endsWith('M')) return 'Metepec'
-  if (['PREET', 'PT', 'ST'].includes(value) || value.endsWith('T')) return 'Toluca'
-  return 'Otro'
+export const plantelSortIndex = (plantel: string) => {
+  const index = PLANTEL_ORDER.indexOf(String(plantel || '').toUpperCase() as typeof PLANTEL_ORDER[number])
+  return index === -1 ? PLANTEL_ORDER.length : index
 }
 
 export const programLabel = (program: ProgramKind) => ({
