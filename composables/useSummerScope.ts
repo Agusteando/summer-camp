@@ -1,58 +1,47 @@
 import type { CampusFilter, CampusName, PlantelSummary, SummerStudent } from '~/types/summer'
 
-const CAMPUS_STORAGE_KEY = 'summer-scope:campus:sheets-v1'
-const PLANTEL_STORAGE_KEY = 'summer-scope:plantel:sheets-v1'
-
 export const useSummerScope = () => {
-  const campus = useState<CampusFilter>('summer-scope-campus-sheets-v1', () => 'all')
-  const plantel = useState<string>('summer-scope-plantel-sheets-v1', () => 'all')
-  const initialized = useState('summer-scope-initialized-sheets-v1', () => false)
+  const campus = useState<CampusFilter>('summer-scope-campus-sheets-v2', () => null)
+  const plantel = useState<string>('summer-scope-plantel-sheets-v2', () => 'all')
 
-  const persist = () => {
-    if (!import.meta.client) return
-    localStorage.setItem(CAMPUS_STORAGE_KEY, campus.value)
-    localStorage.setItem(PLANTEL_STORAGE_KEY, plantel.value)
-  }
-
-  const initialize = () => {
-    if (!import.meta.client || initialized.value) return
-    const storedCampus = localStorage.getItem(CAMPUS_STORAGE_KEY)
-    const storedPlantel = localStorage.getItem(PLANTEL_STORAGE_KEY)
-    if (storedCampus === 'Toluca' || storedCampus === 'Metepec' || storedCampus === 'all') campus.value = storedCampus
-    if (storedPlantel) plantel.value = storedPlantel
-    initialized.value = true
-  }
+  const initialize = () => undefined
 
   const reconcile = (summaries: PlantelSummary[]) => {
+    if (!campus.value) {
+      plantel.value = 'all'
+      return
+    }
+
     const selected = summaries.find((summary) => summary.plantel === plantel.value)
-    if (plantel.value !== 'all' && !selected) plantel.value = 'all'
-    if (selected && campus.value !== 'all' && selected.campus !== campus.value) plantel.value = 'all'
-    persist()
+    if (plantel.value !== 'all' && (!selected || selected.campus !== campus.value)) {
+      plantel.value = 'all'
+    }
   }
 
-  const setCampus = (value: CampusFilter, summaries: PlantelSummary[] = []) => {
+  const setCampus = (value: CampusName) => {
     campus.value = value
-    if (plantel.value !== 'all') {
-      const selected = summaries.find((summary) => summary.plantel === plantel.value)
-      if (!selected || (value !== 'all' && selected.campus !== value)) plantel.value = 'all'
-    }
-    persist()
+    plantel.value = 'all'
   }
 
   const setPlantel = (value: string, summaries: PlantelSummary[] = []) => {
-    plantel.value = value
+    if (!campus.value) return
     if (value !== 'all') {
       const selected = summaries.find((summary) => summary.plantel === value)
-      if (selected) campus.value = selected.campus as CampusName
+      if (!selected || selected.campus !== campus.value) return
     }
-    persist()
+    plantel.value = value
+  }
+
+  const clearCampus = () => {
+    campus.value = null
+    plantel.value = 'all'
   }
 
   const matches = (student: SummerStudent) => {
-    if (campus.value !== 'all' && student.campus !== campus.value) return false
+    if (!campus.value || student.campus !== campus.value) return false
     if (plantel.value !== 'all' && student.plantel !== plantel.value) return false
     return true
   }
 
-  return { campus, plantel, initialize, reconcile, setCampus, setPlantel, matches }
+  return { campus, plantel, initialize, reconcile, setCampus, setPlantel, clearCampus, matches }
 }

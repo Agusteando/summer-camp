@@ -1,5 +1,5 @@
 export type CampusName = 'Toluca' | 'Metepec'
-export type CampusFilter = CampusName | 'all'
+export type CampusFilter = CampusName | null
 export type ProgramKind = 'husky_dreamers' | 'clinica_futbol' | 'unassigned'
 export type AttendanceStatus = 'present' | 'absent' | 'unmarked'
 

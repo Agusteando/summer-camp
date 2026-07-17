@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CalendarDays, CheckCircle2, CloudOff, UsersRound } from '@lucide/vue'
 import { AGE_GROUPS, plantelSortIndex } from '~/shared/catalog'
-import type { ProgramKind, SummerStudent } from '~/types/summer'
+import type { CampusName, ProgramKind, SummerStudent } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
@@ -14,10 +14,20 @@ const service = ref('all')
 const students = computed(() => summer.snapshot.value?.students || [])
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
 const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('es-MX'))
+const hasCampus = computed(() => Boolean(scope.campus.value))
 
-const plantelOptions = computed(() => summaries.value
-  .filter((summary) => scope.campus.value === 'all' || summary.campus === scope.campus.value)
-  .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel)))
+const selectedCampusTotal = computed(() => summaries.value
+  .filter((summary) => summary.campus === scope.campus.value)
+  .reduce((sum, summary) => sum + summary.total, 0))
+
+const selectedCampusName = computed(() => scope.campus.value || '')
+
+const plantelOptions = computed(() => {
+  if (!scope.campus.value) return []
+  return summaries.value
+    .filter((summary) => summary.campus === scope.campus.value)
+    .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel))
+})
 
 const filtered = computed(() => students.value.filter((student) => {
   if (!scope.matches(student)) return false
@@ -33,8 +43,8 @@ const groupMeta = (key: string) => {
   const known = AGE_GROUPS.find((item) => item.key === key)
   if (known) return { label: `${known.label} años`, icon: known.icon }
   return key === 'missing-age'
-    ? { label: 'Edad pendiente', icon: '/icons/dinos.png' }
-    : { label: 'Fuera de rango', icon: '/icons/pandas.png' }
+    ? { label: 'Sin edad', icon: '/icons/dinos.png' }
+    : { label: 'Otros', icon: '/icons/pandas.png' }
 }
 
 const groupedStudents = computed(() => groupOrder.flatMap((key) => {
@@ -46,7 +56,13 @@ const present = computed(() => filtered.value.filter((student) => student.attend
 const unmarked = computed(() => filtered.value.filter((student) => student.attendance === 'unmarked').length)
 const percent = computed(() => filtered.value.length ? Math.round((present.value / filtered.value.length) * 100) : 0)
 
-const setCampus = (campus: 'all' | 'Toluca' | 'Metepec') => scope.setCampus(campus, summaries.value)
+const setCampus = (campus: CampusName) => {
+  scope.setCampus(campus)
+  search.value = ''
+  group.value = 'all'
+  program.value = 'all'
+  service.value = 'all'
+}
 const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
 const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
 
@@ -61,78 +77,87 @@ onMounted(() => {
 
 <template>
   <div class="page-container attendance-page">
-    <section class="hero-panel">
-      <div>
-        <span>Operación diaria</span>
-        <h1>Summer Camp 2026</h1>
-        <p>Inscritos y servicios sincronizados desde Google Sheets.</p>
+    <section class="summer-hero">
+      <div class="summer-hero__orb summer-hero__orb--one" />
+      <div class="summer-hero__orb summer-hero__orb--two" />
+      <div class="summer-hero__copy">
+        <span>Summer Camp 26</span>
+        <h1>Asistencia</h1>
       </div>
       <label class="date-control">
         <CalendarDays :size="19" />
-        <span>Fecha</span>
-        <input :value="summer.selectedDate.value" type="date" @change="summer.setDate(($event.target as HTMLInputElement).value)">
+        <input :value="summer.selectedDate.value" type="date" aria-label="Fecha" @change="summer.setDate(($event.target as HTMLInputElement).value)">
       </label>
     </section>
 
-    <SummaryCards :students="students" :loading="summer.loading.value" />
+    <template v-if="summer.snapshot.value">
+      <SummaryCards :students="students" :loading="summer.loading.value" />
 
-    <CampusScopeBar
-      v-if="summaries.length"
-      :summaries="summaries"
-      :selected-campus="scope.campus.value"
-      :selected-plantel="scope.plantel.value"
-      @campus="setCampus"
-      @plantel="setPlantel"
-    />
+      <CampusScopeBar
+        v-if="summaries.length"
+        :summaries="summaries"
+        :selected-campus="scope.campus.value"
+        :selected-plantel="scope.plantel.value"
+        @campus="setCampus"
+        @plantel="setPlantel"
+      />
 
-    <div v-if="!connectivity.browserOnline.value || summer.pendingCount.value" class="offline-banner">
-      <CloudOff :size="18" />
-      <span v-if="summer.pendingCount.value">{{ summer.pendingCount.value }} cambio{{ summer.pendingCount.value === 1 ? '' : 's' }} pendiente{{ summer.pendingCount.value === 1 ? '' : 's' }} de sincronizar</span>
-      <span v-else>Modo sin conexión: la asistencia se guardará en este dispositivo.</span>
+      <template v-if="hasCampus">
+        <div v-if="!connectivity.browserOnline.value || summer.pendingCount.value" class="offline-banner">
+          <CloudOff :size="18" />
+          <span v-if="summer.pendingCount.value">{{ summer.pendingCount.value }} pendiente{{ summer.pendingCount.value === 1 ? '' : 's' }}</span>
+          <span v-else>Offline</span>
+        </div>
+
+        <section class="attendance-workspace">
+          <header class="workspace-heading">
+            <div>
+              <span>{{ selectedCampusName }}</span>
+              <strong>{{ selectedCampusTotal }}</strong>
+            </div>
+            <div class="workspace-heading__plantels">
+              <span v-for="item in plantelOptions" :key="item.plantel">{{ item.plantel }}</span>
+            </div>
+          </header>
+
+          <FilterDock
+            v-model:search="search"
+            v-model:group="group"
+            v-model:program="program"
+            v-model:service="service"
+          />
+
+          <section class="attendance-countbar">
+            <div><UsersRound :size="17" /><strong>{{ filtered.length }}</strong><span>Lista</span></div>
+            <div><CheckCircle2 :size="17" /><strong>{{ present }}</strong><span>Presentes</span></div>
+            <div><strong>{{ unmarked }}</strong><span>Pendientes</span></div>
+            <span class="attendance-countbar__progress"><i :style="{ width: `${percent}%` }" /></span>
+          </section>
+
+          <div v-if="filtered.length" class="age-sections">
+            <section v-for="section in groupedStudents" :key="section.key" class="age-section">
+              <header class="age-section__header">
+                <img :src="section.icon" alt="">
+                <div><h2>{{ section.label }}</h2><span>{{ section.students.length }}</span></div>
+              </header>
+              <div class="student-grid">
+                <StudentAttendanceCard v-for="student in section.students" :key="student.id" :student="student" @mark="mark" />
+              </div>
+            </section>
+          </div>
+          <div v-else class="empty-state"><img src="/icons/dinos.png" alt=""><strong>Sin resultados</strong></div>
+        </section>
+      </template>
+    </template>
+
+    <div v-else-if="summer.loading.value" class="loading-panel">
+      <div class="skeleton-stack"><div v-for="item in 6" :key="item" class="student-skeleton" /></div>
     </div>
 
-    <section class="attendance-workspace">
-      <template v-if="summer.snapshot.value">
-        <FilterDock
-          v-model:search="search"
-          v-model:group="group"
-          v-model:program="program"
-          v-model:service="service"
-          :plantel="scope.plantel.value"
-          :planteles="plantelOptions"
-          @update:plantel="setPlantel"
-        />
-
-        <section class="attendance-countbar">
-          <div><UsersRound :size="18" /><strong>{{ filtered.length }}</strong><span>visibles</span></div>
-          <div><CheckCircle2 :size="18" /><strong>{{ present }}/{{ filtered.length }}</strong><span>presentes</span></div>
-          <div><strong>{{ unmarked }}</strong><span>por marcar</span></div>
-          <span class="attendance-countbar__progress"><i :style="{ width: `${percent}%` }" /></span>
-        </section>
-
-        <div v-if="filtered.length" class="age-sections">
-          <section v-for="section in groupedStudents" :key="section.key" class="age-section">
-            <header class="age-section__header">
-              <img :src="section.icon" alt="">
-              <div><h2>{{ section.label }}</h2><span>{{ section.students.length }} menores</span></div>
-            </header>
-            <div class="student-grid">
-              <StudentAttendanceCard v-for="student in section.students" :key="student.id" :student="student" @mark="mark" />
-            </div>
-          </section>
-        </div>
-        <div v-else class="empty-state"><img src="/icons/dinos.png" alt=""><strong>Sin resultados con estos filtros</strong></div>
-      </template>
-
-      <div v-else-if="summer.loading.value" class="loading-panel">
-        <div class="skeleton-stack"><div v-for="item in 6" :key="item" class="student-skeleton" /></div>
-      </div>
-
-      <div v-else class="load-error-panel">
-        <span><CloudOff :size="34" /></span>
-        <div><strong>No se pudo cargar la lista</strong><p>{{ summer.error.value || 'La solicitud terminó sin datos.' }}</p></div>
-        <button class="secondary-button" @click="summer.refresh(false)">Reintentar</button>
-      </div>
-    </section>
+    <div v-else class="load-error-panel">
+      <span><CloudOff :size="34" /></span>
+      <div><strong>No se pudo cargar la lista</strong><p>{{ summer.error.value || 'La solicitud terminó sin datos.' }}</p></div>
+      <button class="secondary-button" @click="summer.refresh(false)">Reintentar</button>
+    </div>
   </div>
 </template>

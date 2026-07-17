@@ -3,8 +3,8 @@
   "short_name": "Summer Camp",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f4f7fb",
-  "theme_color": "#0b77c8",
+  "background_color": "#f4f8fb",
+  "theme_color": "#071c2f",
   "lang": "es-MX",
   "icons": [
     { "src": "/icons/dinos-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

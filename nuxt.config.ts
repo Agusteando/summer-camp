@@ -8,7 +8,7 @@ export default defineNuxtConfig({
       title: 'Summer Camp · IECS / IEDIS',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
-        { name: 'theme-color', content: '#0b77c8' },
+        { name: 'theme-color', content: '#071c2f' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         { name: 'format-detection', content: 'telephone=no' },
