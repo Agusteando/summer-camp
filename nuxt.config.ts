@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: false },
+  experimental: { appManifest: false },
   css: ['~/assets/css/main.css'],
   app: {
     head: {
@@ -19,7 +20,7 @@ export default defineNuxtConfig({
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         {
           rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Montserrat:wght@600&display=swap'
+          href: 'https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito+Sans:wght@400;500;600;700;800&display=swap'
         },
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'icon', type: 'image/png', href: '/icons/dinos.png' },

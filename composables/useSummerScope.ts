@@ -8,6 +8,8 @@ export const useSummerScope = () => {
 
   const reconcile = (summaries: PlantelSummary[]) => {
     if (!campus.value) {
+      const firstCampus = summaries.find((summary) => summary.campus === 'Toluca')?.campus || summaries[0]?.campus
+      if (firstCampus) campus.value = firstCampus
       plantel.value = 'all'
       return
     }

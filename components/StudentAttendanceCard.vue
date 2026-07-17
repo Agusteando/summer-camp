@@ -4,7 +4,10 @@ import { programLabel } from '~/shared/catalog'
 import type { SummerStudent } from '~/types/summer'
 
 const props = defineProps<{ student: SummerStudent; busy?: boolean }>()
-const emit = defineEmits<{ mark: [student: SummerStudent, status: 'present' | 'absent'] }>()
+const emit = defineEmits<{
+  mark: [student: SummerStudent, status: 'present' | 'absent']
+  select: [student: SummerStudent]
+}>()
 
 const initials = computed(() => props.student.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase())
 const phoneHref = (phone: string) => phone ? `tel:${phone.replace(/\D/g, '')}` : ''
@@ -14,7 +17,7 @@ const serviceCount = computed(() => Object.values(props.student.services).filter
 <template>
   <article class="student-card" :class="`student-card--${student.attendance}`">
     <div class="student-card__body">
-      <header class="student-card__header">
+      <header class="student-card__header" tabindex="0" role="button" aria-label="Ver ficha del alumno" @click="emit('select', student)" @keydown.enter="emit('select', student)">
         <div class="student-avatar" aria-hidden="true">{{ initials }}</div>
         <div class="student-card__identity">
           <div class="student-card__name-row">
@@ -60,7 +63,7 @@ const serviceCount = computed(() => Object.values(props.student.services).filter
     </div>
 
     <details class="student-details">
-      <summary><span>Ficha</span><ChevronDown :size="18" /></summary>
+      <summary><span>Ver ficha</span><ChevronDown :size="18" /></summary>
       <div class="student-details__grid">
         <section>
           <h4><Phone :size="15" />Principal</h4>

@@ -58,7 +58,22 @@ const groupedRows = (rows: AttendanceHistoryDay['rows']) => {
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
 const setCampus = (campus: CampusName) => scope.setCampus(campus)
 const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
-const formatDate = (value: string) => new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${value}T12:00:00`))
+const formatDate = (value: string) => {
+  const normalized = String(value || '').trim()
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(normalized)
+  const local = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(normalized)
+  const parts = iso
+    ? { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) }
+    : local
+      ? { year: Number(local[3]), month: Number(local[2]), day: Number(local[1]) }
+      : null
+  const date = parts
+    ? new Date(parts.year, parts.month - 1, parts.day, 12)
+    : new Date(normalized)
+  if (Number.isNaN(date.getTime())) return normalized || 'Fecha sin definir'
+  date.setHours(12, 0, 0, 0)
+  return new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).format(date)
+}
 
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
 

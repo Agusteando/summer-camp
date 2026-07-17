@@ -29,7 +29,7 @@ const reset = () => {
     <div class="filter-dock__top">
       <label class="search-box">
         <Search :size="19" />
-        <input :value="search" type="search" placeholder="Nombre o folio" autocomplete="off" @input="emit('update:search', ($event.target as HTMLInputElement).value)">
+        <input :value="search" type="search" placeholder="Buscar por nombre o folio" autocomplete="off" @input="emit('update:search', ($event.target as HTMLInputElement).value)">
         <button v-if="search" aria-label="Limpiar búsqueda" @click="emit('update:search', '')"><X :size="17" /></button>
       </label>
 

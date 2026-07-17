@@ -10,6 +10,7 @@ const search = ref('')
 const group = ref('all')
 const program = ref<'all' | ProgramKind>('all')
 const service = ref('all')
+const selectedStudentId = ref<string | null>(null)
 
 const students = computed(() => summer.snapshot.value?.students || [])
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
@@ -55,6 +56,7 @@ const groupedStudents = computed(() => groupOrder.flatMap((key) => {
 const present = computed(() => filtered.value.filter((student) => student.attendance === 'present').length)
 const unmarked = computed(() => filtered.value.filter((student) => student.attendance === 'unmarked').length)
 const percent = computed(() => filtered.value.length ? Math.round((present.value / filtered.value.length) * 100) : 0)
+const selectedStudent = computed(() => filtered.value.find((student) => student.id === selectedStudentId.value) || filtered.value[0] || null)
 
 const setCampus = (campus: CampusName) => {
   scope.setCampus(campus)
@@ -65,6 +67,7 @@ const setCampus = (campus: CampusName) => {
 }
 const setPlantel = (plantel: string) => scope.setPlantel(plantel, summaries.value)
 const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
+const selectStudent = (student: SummerStudent) => { selectedStudentId.value = student.id }
 
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
 
@@ -73,6 +76,7 @@ onMounted(() => {
   summer.startPolling()
   scope.reconcile(summaries.value)
 })
+onBeforeUnmount(() => summer.stopPolling())
 </script>
 
 <template>
@@ -81,8 +85,8 @@ onMounted(() => {
       <div class="summer-hero__orb summer-hero__orb--one" />
       <div class="summer-hero__orb summer-hero__orb--two" />
       <div class="summer-hero__copy">
-        <span>Summer Camp 26</span>
         <h1>Asistencia</h1>
+        <span>Summer Camp 26</span>
       </div>
       <label class="date-control">
         <CalendarDays :size="19" />
@@ -134,18 +138,26 @@ onMounted(() => {
             <span class="attendance-countbar__progress"><i :style="{ width: `${percent}%` }" /></span>
           </section>
 
-          <div v-if="filtered.length" class="age-sections">
-            <section v-for="section in groupedStudents" :key="section.key" class="age-section">
-              <header class="age-section__header">
-                <img :src="section.icon" alt="">
-                <div><h2>{{ section.label }}</h2><span>{{ section.students.length }}</span></div>
-              </header>
-              <div class="student-grid">
-                <StudentAttendanceCard v-for="student in section.students" :key="student.id" :student="student" @mark="mark" />
+          <div class="workspace-grid">
+            <div class="workspace-list">
+              <div v-if="filtered.length" class="age-sections">
+                <section v-for="section in groupedStudents" :key="section.key" class="age-section">
+                  <header class="age-section__header">
+                    <img :src="section.icon" alt="">
+                    <div><h2>{{ section.label }}</h2><span>{{ section.students.length }} alumnos</span></div>
+                  </header>
+                  <div class="student-grid">
+                    <StudentAttendanceCard v-for="student in section.students" :key="student.id" :student="student" @mark="mark" @select="selectStudent" />
+                  </div>
+                </section>
               </div>
-            </section>
+              <div v-else class="empty-state"><img src="/icons/dinos.png" alt=""><strong>Sin resultados</strong></div>
+            </div>
+
+            <aside v-if="selectedStudent" class="student-inspector" aria-label="Ficha del alumno seleccionado">
+              <StudentDetailPanel :student="selectedStudent" @mark="mark" />
+            </aside>
           </div>
-          <div v-else class="empty-state"><img src="/icons/dinos.png" alt=""><strong>Sin resultados</strong></div>
         </section>
       </template>
     </template>

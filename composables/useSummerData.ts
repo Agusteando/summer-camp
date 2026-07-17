@@ -160,8 +160,6 @@ export const useSummerData = () => {
     poller.value = setInterval(() => void refresh(true), Number(config.public.refreshIntervalMs || 120000))
   }
 
-  onBeforeUnmount(stopPolling)
-
   return {
     snapshot,
     selectedDate,

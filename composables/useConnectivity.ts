@@ -57,7 +57,5 @@ export const useConnectivity = () => {
     timer.value = setInterval(check, Number(config.public.healthIntervalMs || 45000))
   }
 
-  onBeforeUnmount(stop)
-
   return { browserOnline, sourceState, appState, latencyMs, checkedAt, check, start, stop }
 }

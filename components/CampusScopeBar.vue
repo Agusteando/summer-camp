@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Building2, ChevronDown, MapPin, Sparkles } from '@lucide/vue'
+import { Building2, Check, MapPin, School2 } from '@lucide/vue'
 import { plantelSortIndex } from '~/shared/catalog'
 import type { CampusFilter, CampusName, PlantelSummary } from '~/types/summer'
 
@@ -15,9 +15,9 @@ const emit = defineEmits<{
 }>()
 
 const campusOrder: CampusName[] = ['Toluca', 'Metepec']
-const campusMeta: Record<CampusName, { code: string; accent: string }> = {
-  Toluca: { code: 'TOL', accent: 'blue' },
-  Metepec: { code: 'MET', accent: 'coral' }
+const campusMeta: Record<CampusName, { code: string }> = {
+  Toluca: { code: 'TOL' },
+  Metepec: { code: 'MET' }
 }
 
 const campusTotals = computed(() => campusOrder.map((campus) => {
@@ -39,44 +39,31 @@ const visiblePlanteles = computed(() => {
 </script>
 
 <template>
-  <section v-if="!selectedCampus" class="campus-entry" aria-label="Campus">
+  <section class="campus-entry" aria-label="Campus">
     <header class="campus-entry__heading">
-      <span><Sparkles :size="16" /> Campus</span>
+      <span><Building2 :size="18" /> Selecciona campus</span>
     </header>
+
     <div class="campus-entry__grid">
       <button
         v-for="item in campusTotals"
         :key="item.campus"
         class="campus-card"
-        :class="`campus-card--${item.accent}`"
+        :class="{ 'is-active': selectedCampus === item.campus }"
         @click="emit('campus', item.campus)"
       >
-        <span class="campus-card__code">{{ item.code }}</span>
+        <span class="campus-card__illustration"><School2 :size="46" :stroke-width="1.3" /></span>
         <div>
           <strong>{{ item.campus }}</strong>
-          <small>{{ item.planteles.map((row) => row.plantel).join(' · ') }}</small>
+          <small>{{ item.total }} alumnos</small>
         </div>
-        <b>{{ item.total }}</b>
-        <ChevronDown :size="20" />
-      </button>
-    </div>
-  </section>
-
-  <section v-else class="scope-panel">
-    <div class="campus-tabs" role="tablist" aria-label="Campus">
-      <button
-        v-for="item in campusTotals"
-        :key="item.campus"
-        :class="[`campus-tab--${item.accent}`, { 'is-active': selectedCampus === item.campus }]"
-        @click="emit('campus', item.campus)"
-      >
-        <span>{{ item.campus }}</span>
-        <b>{{ item.total }}</b>
+        <span class="campus-card__check"><Check v-if="selectedCampus === item.campus" :size="16" /></span>
       </button>
     </div>
 
-    <div class="plantel-strip">
+    <div v-if="selectedCampus" class="plantel-strip">
       <Building2 :size="16" />
+      <strong>Plantel</strong>
       <button :class="{ 'is-active': selectedPlantel === 'all' }" @click="emit('plantel', 'all')">Todos</button>
       <button
         v-for="item in visiblePlanteles"
@@ -84,7 +71,7 @@ const visiblePlanteles = computed(() => {
         :class="{ 'is-active': selectedPlantel === item.plantel }"
         @click="emit('plantel', item.plantel)"
       >
-        <MapPin :size="13" />{{ item.plantel }} <b>{{ item.total }}</b>
+        <MapPin :size="13" />{{ item.plantel }}
       </button>
     </div>
   </section>

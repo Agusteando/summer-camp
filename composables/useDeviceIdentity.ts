@@ -17,6 +17,5 @@ export const useDeviceIdentity = () => {
     return deviceId.value
   }
 
-  onMounted(get)
   return { deviceId, get }
 }

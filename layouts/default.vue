@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const connectivity = useConnectivity()
 onMounted(() => connectivity.start())
+onBeforeUnmount(() => connectivity.stop())
 </script>
 
 <template>
