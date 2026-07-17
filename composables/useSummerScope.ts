@@ -1,12 +1,12 @@
 import type { CampusFilter, CampusName, PlantelSummary, SummerStudent } from '~/types/summer'
 
-const CAMPUS_STORAGE_KEY = 'summer-scope:campus:v1'
-const PLANTEL_STORAGE_KEY = 'summer-scope:plantel:v1'
+const CAMPUS_STORAGE_KEY = 'summer-scope:campus:sheets-v1'
+const PLANTEL_STORAGE_KEY = 'summer-scope:plantel:sheets-v1'
 
 export const useSummerScope = () => {
-  const campus = useState<CampusFilter>('summer-scope-campus', () => 'all')
-  const plantel = useState<string>('summer-scope-plantel', () => 'all')
-  const initialized = useState('summer-scope-initialized', () => false)
+  const campus = useState<CampusFilter>('summer-scope-campus-sheets-v1', () => 'all')
+  const plantel = useState<string>('summer-scope-plantel-sheets-v1', () => 'all')
+  const initialized = useState('summer-scope-initialized-sheets-v1', () => false)
 
   const persist = () => {
     if (!import.meta.client) return
@@ -43,7 +43,7 @@ export const useSummerScope = () => {
     plantel.value = value
     if (value !== 'all') {
       const selected = summaries.find((summary) => summary.plantel === value)
-      if (selected?.campus === 'Toluca' || selected?.campus === 'Metepec') campus.value = selected.campus as CampusName
+      if (selected) campus.value = selected.campus as CampusName
     }
     persist()
   }

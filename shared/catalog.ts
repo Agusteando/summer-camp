@@ -1,15 +1,19 @@
-import type { CampusName, MealPlan, ProgramKind } from '~/types/summer'
+import type { CampusName, ProgramKind } from '~/types/summer'
 
-export const TOLUCA_PLANTELES = ['CT', 'PT', 'ST'] as const
-export const PLANTEL_ORDER = ['CT', 'PT', 'ST', 'PREEM', 'PREET', 'CM', 'DM', 'CO', 'DC', 'GM', 'PM', 'SM', 'IS', 'ISM'] as const
+export const PLANTEL_ORDER = ['PREET', 'PT', 'ST', 'PREEM', 'PM', 'SM'] as const
 
-export const PLANTEL_LABELS: Record<string, string> = Object.fromEntries(
-  PLANTEL_ORDER.map((plantel) => [plantel, plantel])
-)
+export const PLANTEL_LABELS: Record<string, string> = {
+  PREET: 'Preescolar Toluca',
+  PT: 'Primaria Toluca',
+  ST: 'Secundaria Toluca',
+  PREEM: 'Preescolar Metepec',
+  PM: 'Primaria Metepec',
+  SM: 'Secundaria Metepec'
+}
 
 export const campusForPlantel = (plantel: string): CampusName => {
   const value = String(plantel || '').trim().toUpperCase()
-  return TOLUCA_PLANTELES.includes(value as typeof TOLUCA_PLANTELES[number]) ? 'Toluca' : 'Metepec'
+  return ['PREET', 'PT', 'ST'].includes(value) ? 'Toluca' : 'Metepec'
 }
 
 export const plantelSortIndex = (plantel: string) => {
@@ -17,30 +21,21 @@ export const plantelSortIndex = (plantel: string) => {
   return index === -1 ? PLANTEL_ORDER.length : index
 }
 
+export const normalizeProgram = (modality: string): ProgramKind => {
+  const value = String(modality || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (value.includes('husky')) return 'husky_dreamers'
+  if (value.includes('futbol')) return 'clinica_futbol'
+  return 'unassigned'
+}
+
 export const programLabel = (program: ProgramKind) => ({
   husky_dreamers: 'Husky Dreamers',
   clinica_futbol: 'Clínica de fútbol',
-  unassigned: 'Sin asignar'
+  unassigned: 'Modalidad pendiente'
 })[program]
 
-export const mealLabel = (mealPlan: MealPlan) => ({
-  none: 'Sin alimentos',
-  comida: 'Comida',
-  cena: 'Cena',
-  comida_cena: 'Comida + cena',
-  pending_one: '1 alimento por definir'
-})[mealPlan]
-
-export const mealPlanFromConcept = (conceptId: number): MealPlan => {
-  if (conceptId === 988) return 'comida_cena'
-  if (conceptId === 987) return 'pending_one'
-  return 'none'
-}
-
-export const mealCountFromConcept = (conceptId: number) => conceptId === 988 ? 2 : conceptId === 987 ? 1 : 0
-
 export const AGE_GROUPS = [
-  { key: 'group-1', label: '4–5', min: 4, max: 5, icon: '/icons/abejas.png' },
+  { key: 'group-1', label: '3–5', min: 3, max: 5, icon: '/icons/abejas.png' },
   { key: 'group-2', label: '6–7', min: 6, max: 7, icon: '/icons/dinos.png' },
   { key: 'group-3', label: '8–10', min: 8, max: 10, icon: '/icons/leones.png' },
   { key: 'group-4', label: '11–12', min: 11, max: 12, icon: '/icons/tigres.png' },

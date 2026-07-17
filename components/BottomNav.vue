@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { CalendarCheck2, ClipboardList, SlidersHorizontal } from '@lucide/vue'
+import { CalendarCheck2, History } from '@lucide/vue'
 const route = useRoute()
 const items = [
   { to: '/', label: 'Hoy', icon: CalendarCheck2 },
-  { to: '/attendance', label: 'Asistencia', icon: ClipboardList },
-  { to: '/setup', label: 'Organizar', icon: SlidersHorizontal }
+  { to: '/attendance', label: 'Historial', icon: History }
 ]
 </script>
 

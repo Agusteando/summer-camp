@@ -17,3 +17,22 @@ export const safeClientTimestamp = (value: unknown) => {
   if (date.getUTCFullYear() < 2025 || date.getUTCFullYear() > 2035) return new Date().toISOString()
   return date.toISOString()
 }
+
+export const cleanHeaderValue = (value: unknown, max = 120) => String(value || '').trim().slice(0, max)
+
+export const dateInTimeZone = (date = new Date(), timeZone = 'America/Mexico_City') => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+export const addCalendarDays = (iso: string, days: number) => {
+  const [year, month, day] = iso.split('-').map(Number)
+  const value = new Date(Date.UTC(year, month - 1, day + days))
+  return value.toISOString().slice(0, 10)
+}

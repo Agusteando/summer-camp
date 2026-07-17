@@ -3,7 +3,7 @@
   "short_name": "Summer Camp",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f8fc",
+  "background_color": "#f4f7fb",
   "theme_color": "#0b77c8",
   "lang": "es-MX",
   "icons": [

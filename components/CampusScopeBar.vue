@@ -21,14 +21,14 @@ const campusTotals = computed(() => campusOrder.map((campus) => ({
 })))
 const visiblePlanteles = computed(() => props.summaries
   .filter((summary) => props.selectedCampus === 'all' || summary.campus === props.selectedCampus)
-  .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.plantel.localeCompare(b.plantel, 'es')))
+  .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel)))
 </script>
 
 <template>
   <section class="scope-bar">
     <div class="scope-bar__campuses">
       <button :class="{ 'is-active': selectedCampus === 'all' }" @click="emit('campus', 'all')">
-        <School2 :size="17" /><span>Ambos</span><b>{{ summaries.reduce((sum, item) => sum + item.total, 0) }}</b>
+        <School2 :size="17" /><span>Ambos campus</span><b>{{ summaries.reduce((sum, item) => sum + item.total, 0) }}</b>
       </button>
       <button v-for="item in campusTotals" :key="item.campus" :class="{ 'is-active': selectedCampus === item.campus }" @click="emit('campus', item.campus)">
         <span>{{ item.campus }}</span><b>{{ item.total }}</b>

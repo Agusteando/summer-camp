@@ -1,1 +1,1 @@
-Implementa caché compartida y deduplicación de consultas para proteger Aurora
+Reemplaza la fuente de inscritos por Google Sheets y reconstruye la operación de asistencia
