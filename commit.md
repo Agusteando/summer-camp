@@ -1,1 +1,1 @@
-Reemplaza la fuente de inscritos por Google Sheets y reconstruye la operación de asistencia
+Elimina DDL automático y documenta el esquema manual de asistencia

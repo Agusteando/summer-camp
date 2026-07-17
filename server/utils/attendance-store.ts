@@ -2,41 +2,48 @@ import type { AttendanceMutation, AttendanceStatus } from '../../types/summer'
 import type { SourceStudent } from './sheet-source'
 import { appDb, appQuery } from './db'
 
-let schemaPromise: Promise<void> | null = null
+let schemaCheckPromise: Promise<void> | null = null
 const year = () => Number(useRuntimeConfig().summerYear || 2026)
 
-const ensureSchema = async () => {
-  if (!schemaPromise) {
-    schemaPromise = (async () => {
-      await appQuery(`
-        CREATE TABLE IF NOT EXISTS summer_attendance_sheet (
-          summer_year SMALLINT UNSIGNED NOT NULL,
-          attendance_date DATE NOT NULL,
-          student_id VARCHAR(120) NOT NULL,
-          status ENUM('present', 'absent') NOT NULL,
-          plantel VARCHAR(20) NOT NULL,
-          actor_name VARCHAR(160) NOT NULL DEFAULT '',
-          device_id VARCHAR(120) NOT NULL,
-          client_timestamp DATETIME NOT NULL,
-          idempotency_key VARCHAR(160) NOT NULL,
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (summer_year, attendance_date, student_id),
-          KEY idx_summer_attendance_sheet_idempotency (idempotency_key),
-          KEY idx_summer_attendance_sheet_date (summer_year, attendance_date),
-          KEY idx_summer_attendance_sheet_plantel (summer_year, plantel, attendance_date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `)
-    })().catch((error) => {
-      schemaPromise = null
-      throw error
+/**
+ * Internal policy: the application must never execute DDL.
+ * This read-only query verifies that the manually provisioned table and
+ * required columns are available. A failed check is not cached so the app can
+ * recover after a DBA creates or repairs the table without restarting.
+ */
+const assertSchemaAvailable = async () => {
+  if (!schemaCheckPromise) {
+    schemaCheckPromise = appQuery(`
+      SELECT
+        summer_year,
+        attendance_date,
+        student_id,
+        status,
+        plantel,
+        actor_name,
+        device_id,
+        client_timestamp,
+        idempotency_key,
+        created_at,
+        updated_at
+      FROM summer_attendance_sheet
+      LIMIT 0
+    `).then(() => undefined).catch((cause: any) => {
+      schemaCheckPromise = null
+      const databaseError = String(cause?.message || cause)
+      throw createError({
+        statusCode: 503,
+        message: 'La tabla summer_attendance_sheet no está provisionada o no coincide con el esquema requerido. Ejecute database/manual-schema.sql con una cuenta autorizada para DDL.',
+        data: { databaseError }
+      })
     })
   }
-  await schemaPromise
+
+  await schemaCheckPromise
 }
 
 export const readAttendanceForDate = async (date: string) => {
-  await ensureSchema()
+  await assertSchemaAvailable()
   const rows = await appQuery<any[]>(`
     SELECT student_id AS studentId, status, updated_at AS updatedAt
     FROM summer_attendance_sheet
@@ -54,7 +61,7 @@ export const saveAttendanceBatch = async (
   students: Map<string, SourceStudent>,
   actorName: string
 ) => {
-  await ensureSchema()
+  await assertSchemaAvailable()
   const connection = await appDb().getConnection()
   const accepted: string[] = []
   try {
@@ -102,7 +109,7 @@ export const saveAttendanceBatch = async (
 }
 
 export const readAttendanceHistory = async (from: string, to: string, sourceStudents: SourceStudent[]) => {
-  await ensureSchema()
+  await assertSchemaAvailable()
   const allowed = new Map(sourceStudents.map((student) => [student.id, student]))
   const rows = await appQuery<any[]>(`
     SELECT attendance_date AS date, student_id AS studentId, status, plantel,
@@ -141,7 +148,7 @@ export const readAttendanceHistory = async (from: string, to: string, sourceStud
 export const attendanceDatabaseHealth = async () => {
   const started = Date.now()
   try {
-    await ensureSchema()
+    await assertSchemaAvailable()
     await appQuery('SELECT 1 AS ok')
     return { reachable: true, latencyMs: Date.now() - started }
   } catch (cause: any) {
