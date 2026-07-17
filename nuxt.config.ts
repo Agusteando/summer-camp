@@ -15,6 +15,12 @@ export default defineNuxtConfig({
         { name: 'description', content: 'Operación diaria, servicios y asistencia de Summer Camp IECS / IEDIS' }
       ],
       link: [
+        { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+        { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+        {
+          rel: 'stylesheet',
+          href: 'https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Montserrat:wght@600&display=swap'
+        },
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'icon', type: 'image/png', href: '/icons/dinos.png' },
         { rel: 'apple-touch-icon', href: '/icons/dinos-180.png' }

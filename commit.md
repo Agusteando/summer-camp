@@ -1,1 +1,1 @@
-Elimina package-lock.json para permitir que Vercel instale las dependencias sin usar resoluciones internas.
+Aplica Fredoka en títulos y Montserrat SemiBold en toda la interfaz.
