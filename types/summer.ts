@@ -3,6 +3,8 @@ export type CampusFilter = CampusName | null
 export type ProgramKind = 'husky_dreamers' | 'clinica_futbol' | 'unassigned'
 export type ProgramScope = Exclude<ProgramKind, 'unassigned'>
 export type AttendanceStatus = 'present' | 'absent' | 'unmarked'
+export type AgeGroupKey = 'group-1' | 'group-2' | 'group-3' | 'group-4' | 'group-5'
+export type AgeGroupView = 'all' | AgeGroupKey | 'other'
 
 export type StudentContact = {
   name: string

@@ -1,4 +1,4 @@
-import type { CampusName, ProgramKind, ProgramScope } from '~/types/summer'
+import type { AgeGroupKey, AgeGroupView, CampusName, ProgramKind, ProgramScope } from '~/types/summer'
 
 export const PLANTEL_ORDER = ['PREET', 'PT', 'ST', 'PREEM', 'PM', 'SM'] as const
 
@@ -41,7 +41,7 @@ export const programShortLabel = (program: ProgramScope) => ({
   clinica_futbol: 'Clínica'
 })[program]
 
-export const AGE_GROUPS = [
+export const AGE_GROUPS: Array<{ key: AgeGroupKey; label: string; min: number; max: number; icon: string }> = [
   { key: 'group-1', label: '3–5', min: 3, max: 5, icon: '/icons/abejas.png' },
   { key: 'group-2', label: '6–7', min: 6, max: 7, icon: '/icons/dinos.png' },
   { key: 'group-3', label: '8–10', min: 8, max: 10, icon: '/icons/leones.png' },
@@ -52,4 +52,15 @@ export const AGE_GROUPS = [
 export const ageGroupFor = (age: number | null) => {
   if (age === null) return 'missing-age'
   return AGE_GROUPS.find((group) => age >= group.min && age <= group.max)?.key || 'out-of-range'
+}
+
+export const ageGroupViewKeyFor = (ageGroup: string): AgeGroupView => {
+  const group = AGE_GROUPS.find((item) => item.key === ageGroup)
+  return group?.key || 'other'
+}
+
+export const ageGroupViewLabel = (group: AgeGroupView) => {
+  if (group === 'all') return 'Todos los grupos'
+  if (group === 'other') return 'Sin grupo de edad'
+  return `${AGE_GROUPS.find((item) => item.key === group)?.label || group} años`
 }

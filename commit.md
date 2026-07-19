@@ -1,1 +1,1 @@
-Compacta y enfoca el flujo progresivo de selección de grupo
+Restaura la navegación contextual por grupos de edad
