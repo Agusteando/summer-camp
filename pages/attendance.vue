@@ -7,8 +7,11 @@ const summer = useSummerData()
 const connectivity = useConnectivity()
 const scope = useSummerScope()
 const excel = useExcelExport()
+scope.initialize()
+
 const search = ref('')
-const editingScope = ref(false)
+const selectionAnchor = ref<HTMLElement | null>(null)
+const contentAnchor = ref<HTMLElement | null>(null)
 
 const students = computed(() => summer.snapshot.value?.students || [])
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
@@ -25,16 +28,23 @@ const absent = computed(() => scopedStudents.value.filter((student) => student.a
 const pending = computed(() => scopedStudents.value.filter((student) => student.attendance === 'unmarked').length)
 const completed = computed(() => scopedStudents.value.length ? Math.round(((present.value + absent.value) / scopedStudents.value.length) * 100) : 0)
 
+const scrollTo = async (element: HTMLElement | null) => {
+  if (!import.meta.client || !element) return
+  await nextTick()
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
 const setCampus = (campus: CampusName) => scope.setCampus(campus)
 const setProgram = (program: ProgramScope) => {
   scope.setProgram(program)
-  editingScope.value = false
   search.value = ''
 }
-const resetScope = () => {
+const resetScope = async () => {
   scope.clear()
-  editingScope.value = false
   search.value = ''
+  await nextTick()
+  await scrollTo(selectionAnchor.value)
 }
 const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
 const exportAttendance = () => {
@@ -48,10 +58,15 @@ const exportAttendance = () => {
   })
 }
 
+watch(() => scope.ready.value, async (ready, previous) => {
+  if (ready && !previous) {
+    await nextTick()
+    await scrollTo(contentAnchor.value)
+  }
+})
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(() => {
-  scope.initialize()
   summer.startPolling()
   scope.reconcile(summaries.value)
 })
@@ -59,48 +74,52 @@ onBeforeUnmount(() => summer.stopPolling())
 </script>
 
 <template>
-  <div class="page-container attendance-page">
-    <section class="product-hero product-hero--attendance">
+  <div class="page-container attendance-page" :class="{ 'page-container--focused': scope.ready.value }">
+    <section v-if="!scope.ready.value" class="product-hero product-hero--selection">
       <div>
         <span>Summer Camp 26</span>
         <h1>Asistencia</h1>
-        <p>Marca presentes y ausentes únicamente dentro del grupo seleccionado.</p>
       </div>
-      <label class="hero-date-control">
-        <CalendarDays :size="20" />
-        <span>Fecha</span>
-        <input :value="summer.selectedDate.value" type="date" aria-label="Fecha de asistencia" @change="summer.setDate(($event.target as HTMLInputElement).value)">
-      </label>
+      <UsersRound :size="38" :stroke-width="1.5" />
     </section>
 
     <template v-if="summer.snapshot.value">
-      <SummerScopePicker
-        v-if="!scope.ready.value || editingScope"
-        :summaries="summaries"
-        :selected-campus="scope.campus.value"
-        :selected-program="scope.program.value"
-        @campus="setCampus"
-        @program="setProgram"
-        @reset="resetScope"
-      />
-
-      <template v-if="scope.ready.value && !editingScope && scope.campus.value && scope.program.value">
-        <ScopeToolbar
-          :campus="scope.campus.value"
-          :program="scope.program.value"
-          :total="scopedStudents.length"
-          :exporting="excel.exporting.value"
-          @edit="editingScope = true"
+      <div v-if="!scope.ready.value" ref="selectionAnchor" class="journey-anchor">
+        <SummerScopePicker
+          :summaries="summaries"
+          :selected-campus="scope.campus.value"
+          :selected-program="scope.program.value"
+          @campus="setCampus"
+          @program="setProgram"
           @reset="resetScope"
-          @export="exportAttendance"
         />
+      </div>
+
+      <template v-if="scope.ready.value && scope.campus.value && scope.program.value">
+        <div ref="contentAnchor" class="content-anchor">
+          <ScopeToolbar
+            :campus="scope.campus.value"
+            :program="scope.program.value"
+            :total="scopedStudents.length"
+            :exporting="excel.exporting.value"
+            @reset="resetScope"
+            @export="exportAttendance"
+          >
+            <template #utility>
+              <label class="toolbar-date-control">
+                <CalendarDays :size="16" />
+                <input :value="summer.selectedDate.value" type="date" aria-label="Fecha de asistencia" @change="summer.setDate(($event.target as HTMLInputElement).value)">
+              </label>
+            </template>
+          </ScopeToolbar>
+        </div>
 
         <div v-if="excel.error.value" class="export-error">{{ excel.error.value }}</div>
 
         <div v-if="!connectivity.browserOnline.value || summer.pendingCount.value" class="offline-banner">
           <CloudOff :size="18" />
           <span v-if="summer.pendingCount.value">{{ summer.pendingCount.value }} asistencia{{ summer.pendingCount.value === 1 ? '' : 's' }} pendiente{{ summer.pendingCount.value === 1 ? '' : 's' }} de sincronizar</span>
-          <span v-else>Sin conexión. Puedes continuar; los cambios se enviarán después.</span>
+          <span v-else>Sin conexión. Los cambios se enviarán después.</span>
         </div>
 
         <section class="attendance-workspace">
@@ -126,8 +145,8 @@ onBeforeUnmount(() => summer.stopPolling())
           </div>
           <div v-else class="empty-state">
             <img src="/icons/abejas.png" alt="">
-            <strong>Sin alumnos en esta vista</strong>
-            <p>{{ search ? 'Prueba con otro nombre.' : 'La modalidad seleccionada no tiene alumnos cargados.' }}</p>
+            <strong>Sin alumnos</strong>
+            <p>{{ search ? 'Prueba con otro nombre.' : 'No hay alumnos cargados en este grupo.' }}</p>
           </div>
         </section>
       </template>

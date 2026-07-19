@@ -7,8 +7,11 @@ const summer = useSummerData()
 const connectivity = useConnectivity()
 const scope = useSummerScope()
 const excel = useExcelExport()
+scope.initialize()
+
 const search = ref('')
-const editingScope = ref(false)
+const selectionAnchor = ref<HTMLElement | null>(null)
+const contentAnchor = ref<HTMLElement | null>(null)
 
 const students = computed(() => summer.snapshot.value?.students || [])
 const summaries = computed(() => summer.snapshot.value?.summaries || [])
@@ -21,16 +24,23 @@ const visibleStudents = computed(() => scopedStudents.value.filter((student) => 
   return `${student.name} ${student.folio} ${student.plantel} ${student.plantelLabel}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)
 }))
 
+const scrollTo = async (element: HTMLElement | null) => {
+  if (!import.meta.client || !element) return
+  await nextTick()
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
 const setCampus = (campus: CampusName) => scope.setCampus(campus)
 const setProgram = (program: ProgramScope) => {
   scope.setProgram(program)
-  editingScope.value = false
   search.value = ''
 }
-const resetScope = () => {
+const resetScope = async () => {
   scope.clear()
-  editingScope.value = false
   search.value = ''
+  await nextTick()
+  await scrollTo(selectionAnchor.value)
 }
 const exportList = () => {
   if (!scope.campus.value || !scope.program.value) return
@@ -41,10 +51,15 @@ const exportList = () => {
   })
 }
 
+watch(() => scope.ready.value, async (ready, previous) => {
+  if (ready && !previous) {
+    await nextTick()
+    await scrollTo(contentAnchor.value)
+  }
+})
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
 
 onMounted(() => {
-  scope.initialize()
   summer.startPolling()
   scope.reconcile(summaries.value)
 })
@@ -52,37 +67,38 @@ onBeforeUnmount(() => summer.stopPolling())
 </script>
 
 <template>
-  <div class="page-container roster-page">
-    <section class="product-hero product-hero--roster">
+  <div class="page-container roster-page" :class="{ 'page-container--focused': scope.ready.value }">
+    <section v-if="!scope.ready.value" class="product-hero product-hero--selection">
       <div>
         <span>Summer Camp 26</span>
         <h1>Lista de alumnos</h1>
-        <p>Consulta rápida por campus y modalidad, sin mezclar grupos.</p>
       </div>
-      <UsersRound :size="42" :stroke-width="1.5" />
+      <UsersRound :size="38" :stroke-width="1.5" />
     </section>
 
     <template v-if="summer.snapshot.value">
-      <SummerScopePicker
-        v-if="!scope.ready.value || editingScope"
-        :summaries="summaries"
-        :selected-campus="scope.campus.value"
-        :selected-program="scope.program.value"
-        @campus="setCampus"
-        @program="setProgram"
-        @reset="resetScope"
-      />
-
-      <template v-if="scope.ready.value && !editingScope && scope.campus.value && scope.program.value">
-        <ScopeToolbar
-          :campus="scope.campus.value"
-          :program="scope.program.value"
-          :total="scopedStudents.length"
-          :exporting="excel.exporting.value"
-          @edit="editingScope = true"
+      <div v-if="!scope.ready.value" ref="selectionAnchor" class="journey-anchor">
+        <SummerScopePicker
+          :summaries="summaries"
+          :selected-campus="scope.campus.value"
+          :selected-program="scope.program.value"
+          @campus="setCampus"
+          @program="setProgram"
           @reset="resetScope"
-          @export="exportList"
         />
+      </div>
+
+      <template v-if="scope.ready.value && scope.campus.value && scope.program.value">
+        <div ref="contentAnchor" class="content-anchor">
+          <ScopeToolbar
+            :campus="scope.campus.value"
+            :program="scope.program.value"
+            :total="scopedStudents.length"
+            :exporting="excel.exporting.value"
+            @reset="resetScope"
+            @export="exportList"
+          />
+        </div>
 
         <div v-if="excel.error.value" class="export-error">{{ excel.error.value }}</div>
 
@@ -113,8 +129,8 @@ onBeforeUnmount(() => summer.stopPolling())
           </div>
           <div v-else class="empty-state">
             <img src="/icons/dinos.png" alt="">
-            <strong>Sin alumnos en esta vista</strong>
-            <p>{{ search ? 'Prueba con otro nombre o folio.' : 'La modalidad seleccionada no tiene alumnos cargados.' }}</p>
+            <strong>Sin alumnos</strong>
+            <p>{{ search ? 'Prueba con otro nombre o folio.' : 'No hay alumnos cargados en este grupo.' }}</p>
           </div>
         </section>
       </template>

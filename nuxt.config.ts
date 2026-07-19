@@ -45,7 +45,7 @@ export default defineNuxtConfig({
       refreshIntervalMs: Number(process.env.NUXT_PUBLIC_REFRESH_INTERVAL_MS || 120000),
       healthIntervalMs: Number(process.env.NUXT_PUBLIC_HEALTH_INTERVAL_MS || 45000),
       appVersion: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'local',
-      buildId: 'summer-scope-v3'
+      buildId: 'summer-scope-v4'
     }
   },
   nitro: {

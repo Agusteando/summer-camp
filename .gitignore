@@ -1,9 +1,0 @@
-.nuxt
-.output
-node_modules
-.codex-run/
-.env
-.DS_Store
-*.log
-
-.vercel

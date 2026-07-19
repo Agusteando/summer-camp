@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowRight, Check, Dumbbell, GraduationCap, MapPin, RotateCcw } from '@lucide/vue'
+import { Dumbbell, GraduationCap, MapPin, Pencil } from '@lucide/vue'
 import { PROGRAM_ORDER, programLabel } from '~/shared/catalog'
 import type { CampusFilter, CampusName, PlantelSummary, ProgramScope } from '~/types/summer'
 
@@ -15,7 +15,10 @@ const emit = defineEmits<{
   reset: []
 }>()
 
+const campusSection = ref<HTMLElement | null>(null)
+const programSection = ref<HTMLElement | null>(null)
 const campusOrder: CampusName[] = ['Toluca', 'Metepec']
+
 const campusTotal = (campus: CampusName) => props.summaries
   .filter((summary) => summary.campus === campus)
   .reduce((sum, summary) => sum + summary.huskyDreamers + summary.footballClinic, 0)
@@ -26,61 +29,69 @@ const programTotal = (program: ProgramScope) => {
     .filter((summary) => summary.campus === props.selectedCampus)
     .reduce((sum, summary) => sum + (program === 'husky_dreamers' ? summary.huskyDreamers : summary.footballClinic), 0)
 }
+
+const focusStep = async (element: HTMLElement | null) => {
+  if (!import.meta.client || !element) return
+  await nextTick()
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+  window.setTimeout(() => {
+    element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+  }, reducedMotion ? 0 : 260)
+}
+
+watch(() => props.selectedCampus, async (campus, previous) => {
+  await nextTick()
+  if (campus && !props.selectedProgram && campus !== previous) void focusStep(programSection.value)
+  if (!campus && previous) void focusStep(campusSection.value)
+}, { flush: 'post' })
 </script>
 
 <template>
-  <section class="scope-picker" aria-label="Seleccionar grupo de trabajo">
+  <section class="scope-picker" :class="{ 'scope-picker--program': selectedCampus }" aria-label="Seleccionar grupo">
     <header class="scope-picker__header">
-      <div>
-        <span>Grupo de trabajo</span>
-        <h2>¿Qué alumnos vas a consultar?</h2>
-        <p>Selecciona campus y después modalidad. La app recordará esta elección en este dispositivo.</p>
+      <div class="scope-picker__step">
+        <span>{{ selectedCampus ? 'Modalidad' : 'Campus' }}</span>
+        <b>{{ selectedCampus ? '2' : '1' }}/2</b>
       </div>
-      <button v-if="selectedCampus || selectedProgram" class="text-button" type="button" @click="emit('reset')">
-        <RotateCcw :size="16" /> Reiniciar
-      </button>
+      <h2>{{ selectedCampus ? 'Elige modalidad' : 'Elige campus' }}</h2>
     </header>
 
-    <div class="scope-step">
-      <div class="scope-step__label"><strong>1</strong><span>Campus</span></div>
-      <div class="scope-options scope-options--campus">
-        <button
-          v-for="campus in campusOrder"
-          :key="campus"
-          type="button"
-          class="scope-option"
-          :class="{ 'is-active': selectedCampus === campus }"
-          @click="emit('campus', campus)"
-        >
-          <span class="scope-option__icon"><MapPin :size="23" /></span>
-          <div><strong>{{ campus }}</strong><small>{{ campusTotal(campus) }} alumnos inscritos</small></div>
-          <span class="scope-option__check"><Check v-if="selectedCampus === campus" :size="16" /></span>
-        </button>
-      </div>
+    <button v-if="selectedCampus" class="scope-selection-chip" type="button" aria-label="Cambiar campus" @click="emit('reset')">
+      <MapPin :size="18" />
+      <strong>{{ selectedCampus }}</strong>
+      <span>Cambiar</span>
+      <Pencil :size="14" />
+    </button>
+
+    <div v-if="!selectedCampus" ref="campusSection" class="scope-options scope-options--campus">
+      <button
+        v-for="campus in campusOrder"
+        :key="campus"
+        type="button"
+        class="scope-option"
+        @click="emit('campus', campus)"
+      >
+        <span class="scope-option__icon"><MapPin :size="23" /></span>
+        <div><strong>{{ campus }}</strong><small>{{ campusTotal(campus) }} alumnos</small></div>
+      </button>
     </div>
 
-    <div class="scope-connector" :class="{ 'is-ready': selectedCampus }"><ArrowRight :size="18" /></div>
-
-    <div class="scope-step" :class="{ 'is-disabled': !selectedCampus }">
-      <div class="scope-step__label"><strong>2</strong><span>Modalidad</span></div>
-      <div class="scope-options scope-options--program">
-        <button
-          v-for="program in PROGRAM_ORDER"
-          :key="program"
-          type="button"
-          class="scope-option scope-option--program"
-          :class="{ 'is-active': selectedProgram === program }"
-          :disabled="!selectedCampus || programTotal(program) === 0"
-          @click="emit('program', program)"
-        >
-          <span class="scope-option__icon">
-            <GraduationCap v-if="program === 'husky_dreamers'" :size="24" />
-            <Dumbbell v-else :size="24" />
-          </span>
-          <div><strong>{{ programLabel(program) }}</strong><small>{{ selectedCampus ? `${programTotal(program)} alumnos` : 'Selecciona campus primero' }}</small></div>
-          <span class="scope-option__check"><Check v-if="selectedProgram === program" :size="16" /></span>
-        </button>
-      </div>
+    <div v-else ref="programSection" class="scope-options scope-options--program">
+      <button
+        v-for="program in PROGRAM_ORDER"
+        :key="program"
+        type="button"
+        class="scope-option scope-option--program"
+        :disabled="programTotal(program) === 0"
+        @click="emit('program', program)"
+      >
+        <span class="scope-option__icon">
+          <GraduationCap v-if="program === 'husky_dreamers'" :size="24" />
+          <Dumbbell v-else :size="24" />
+        </span>
+        <div><strong>{{ programLabel(program) }}</strong><small>{{ programTotal(program) }} alumnos</small></div>
+      </button>
     </div>
   </section>
 </template>

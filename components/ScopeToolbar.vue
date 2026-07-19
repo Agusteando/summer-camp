@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, MapPin, Pencil, RotateCcw } from '@lucide/vue'
+import { Download, MapPin, RotateCcw } from '@lucide/vue'
 import { programLabel } from '~/shared/catalog'
 import type { CampusName, ProgramScope } from '~/types/summer'
 
@@ -11,24 +11,28 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  edit: []
   reset: []
   export: []
 }>()
 </script>
 
 <template>
-  <section class="scope-toolbar">
+  <section class="scope-toolbar" aria-label="Grupo seleccionado">
     <div class="scope-toolbar__selection">
-      <span class="scope-toolbar__icon"><MapPin :size="20" /></span>
-      <div><small>Trabajando con</small><strong>{{ props.campus }} · {{ programLabel(props.program) }}</strong></div>
-      <span class="scope-toolbar__count">{{ props.total }}</span>
+      <span class="scope-toolbar__icon"><MapPin :size="18" /></span>
+      <div class="scope-toolbar__labels">
+        <strong>{{ props.campus }}</strong>
+        <span>{{ programLabel(props.program) }}</span>
+      </div>
+      <span class="scope-toolbar__count" :aria-label="`${props.total} alumnos`">{{ props.total }}</span>
     </div>
     <div class="scope-toolbar__actions">
-      <button class="secondary-button scope-toolbar__edit" type="button" aria-label="Cambiar campus o modalidad" @click="emit('edit')"><Pencil :size="16" /><span>Cambiar</span></button>
-      <button class="secondary-button secondary-button--icon" type="button" aria-label="Reiniciar selección" @click="emit('reset')"><RotateCcw :size="16" /></button>
+      <slot name="utility" />
+      <button class="secondary-button secondary-button--icon" type="button" title="Reiniciar selección" aria-label="Reiniciar selección" @click="emit('reset')">
+        <RotateCcw :size="16" />
+      </button>
       <button class="primary-button" type="button" :disabled="exporting || !total" @click="emit('export')">
-        <Download :size="17" /> {{ exporting ? 'Preparando…' : 'Excel' }}
+        <Download :size="17" /><span>{{ exporting ? 'Preparando…' : 'Excel' }}</span>
       </button>
     </div>
   </section>

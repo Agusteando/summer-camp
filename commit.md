@@ -1,1 +1,1 @@
-Rediseña el flujo por campus y modalidad y agrega exportación a Excel
+Compacta y enfoca el flujo progresivo de selección de grupo
