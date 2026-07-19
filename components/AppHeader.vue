@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, CloudOff, LoaderCircle, Menu, RefreshCw, WifiOff } from '@lucide/vue'
+import { CloudOff, LoaderCircle, RefreshCw, WifiOff } from '@lucide/vue'
 
 const connectivity = useConnectivity()
 const summer = useSummerData()
@@ -16,16 +16,11 @@ const syncedAt = computed(() => {
   <header class="topbar">
     <div class="topbar__inner">
       <NuxtLink to="/" class="brand-lockup" aria-label="Summer Camp">
-        <span class="brand-lockup__menu"><Menu :size="25" /></span>
         <span class="brand-lockup__mark"><img src="/brand/iecs-iedis-logo.png" alt="IECS IEDIS"></span>
-        <div class="brand-lockup__name">
-          <strong>Summer Camp</strong>
-          <span>26</span>
-        </div>
+        <div class="brand-lockup__name"><strong>Summer Camp</strong><span>26</span></div>
       </NuxtLink>
 
       <div class="topbar__actions">
-        <span class="notification-mark" aria-hidden="true"><Bell :size="20" /><i /></span>
         <span
           class="sync-mark"
           :class="{ 'is-offline': !connectivity.browserOnline.value || !sourceOnline }"
@@ -36,7 +31,7 @@ const syncedAt = computed(() => {
           <i v-else />
           <b>{{ !connectivity.browserOnline.value ? 'Offline' : sourceOnline ? syncedAt || 'Live' : 'Error' }}</b>
         </span>
-        <button class="icon-button" :disabled="summer.updating.value" aria-label="Actualizar lista" @click="summer.refresh(true)">
+        <button class="icon-button" type="button" :disabled="summer.updating.value" aria-label="Actualizar lista" @click="summer.refresh(true)">
           <LoaderCircle v-if="summer.updating.value" class="spin" :size="19" />
           <RefreshCw v-else :size="19" />
         </button>

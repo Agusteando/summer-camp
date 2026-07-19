@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { CalendarCheck2, History } from '@lucide/vue'
+import { ClipboardCheck, List } from '@lucide/vue'
 const route = useRoute()
 const items = [
-  { to: '/', label: 'Hoy', icon: CalendarCheck2 },
-  { to: '/attendance', label: 'Historial', icon: History }
+  { to: '/', label: 'Lista', icon: List },
+  { to: '/attendance', label: 'Asistencia', icon: ClipboardCheck }
 ]
 </script>
 

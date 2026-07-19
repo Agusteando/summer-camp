@@ -137,7 +137,8 @@ export const readAttendanceHistory = async (from: string, to: string, sourceStud
       updatedAt: new Date(row.updatedAt).toISOString(),
       name: student.name,
       plantelLabel: student.plantelLabel,
-      campus: student.campus
+      campus: student.campus,
+      program: student.program
     })
     byDate.set(date, current)
   })

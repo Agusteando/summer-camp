@@ -1,1 +1,1 @@
-Aplica Fredoka en títulos y Montserrat SemiBold en toda la interfaz.
+Rediseña el flujo por campus y modalidad y agrega exportación a Excel

@@ -1,4 +1,4 @@
-import type { CampusName, ProgramKind } from '~/types/summer'
+import type { CampusName, ProgramKind, ProgramScope } from '~/types/summer'
 
 export const PLANTEL_ORDER = ['PREET', 'PT', 'ST', 'PREEM', 'PM', 'SM'] as const
 
@@ -10,6 +10,8 @@ export const PLANTEL_LABELS: Record<string, string> = {
   PM: 'Primaria Metepec',
   SM: 'Secundaria Metepec'
 }
+
+export const PROGRAM_ORDER: ProgramScope[] = ['husky_dreamers', 'clinica_futbol']
 
 export const campusForPlantel = (plantel: string): CampusName => {
   const value = String(plantel || '').trim().toUpperCase()
@@ -23,15 +25,20 @@ export const plantelSortIndex = (plantel: string) => {
 
 export const normalizeProgram = (modality: string): ProgramKind => {
   const value = String(modality || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-  if (value.includes('husky')) return 'husky_dreamers'
-  if (value.includes('futbol')) return 'clinica_futbol'
+  if (value.includes('husky') || value.includes('curso')) return 'husky_dreamers'
+  if (value.includes('futbol') || value.includes('clinica')) return 'clinica_futbol'
   return 'unassigned'
 }
 
 export const programLabel = (program: ProgramKind) => ({
-  husky_dreamers: 'Husky Dreamers',
+  husky_dreamers: 'Curso de verano',
   clinica_futbol: 'Clínica de fútbol',
   unassigned: 'Modalidad pendiente'
+})[program]
+
+export const programShortLabel = (program: ProgramScope) => ({
+  husky_dreamers: 'Curso',
+  clinica_futbol: 'Clínica'
 })[program]
 
 export const AGE_GROUPS = [

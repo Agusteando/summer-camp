@@ -1,6 +1,6 @@
 import type { AttendanceMutation, AttendanceStatus, SnapshotResponse, SummerStudent } from '~/types/summer'
 
-let activeRefresh: Promise<boolean> | null = null
+let activeRefresh: { date: string; promise: Promise<boolean> } | null = null
 
 const localDate = () => {
   const now = new Date()
@@ -77,35 +77,48 @@ export const useSummerData = () => {
   }
 
   const refresh = async (background = false) => {
-    if (activeRefresh) return await activeRefresh
-    activeRefresh = (async () => {
+    const requestedDate = selectedDate.value
+    if (activeRefresh?.date === requestedDate) return await activeRefresh.promise
+
+    const promise = (async () => {
       const hasSnapshot = Boolean(snapshot.value)
       loading.value = !background && !hasSnapshot
       updating.value = background || hasSnapshot
       error.value = null
       try {
         const result = await $fetch<SnapshotResponse>('/api/summer/snapshot', {
-          query: { date: selectedDate.value },
+          query: { date: requestedDate },
           cache: 'no-store',
           retry: 0
         })
         if (!Array.isArray(result?.students) || !Array.isArray(result?.summaries)) {
           throw new Error('La respuesta de alumnos no tiene la estructura esperada.')
         }
+        if (selectedDate.value !== requestedDate) return false
         snapshot.value = result
         await applyPending()
         saveLocal()
         if (import.meta.client) void queue.flush()
         return true
       } catch (cause: any) {
-        error.value = cause?.data?.message || cause?.message || 'No se pudo actualizar la lista.'
+        if (selectedDate.value === requestedDate) {
+          error.value = cause?.data?.message || cause?.message || 'No se pudo actualizar la lista.'
+        }
         return false
       } finally {
-        loading.value = false
-        updating.value = false
+        if (selectedDate.value === requestedDate) {
+          loading.value = false
+          updating.value = false
+        }
       }
     })()
-    try { return await activeRefresh } finally { activeRefresh = null }
+
+    activeRefresh = { date: requestedDate, promise }
+    try {
+      return await promise
+    } finally {
+      if (activeRefresh?.promise === promise) activeRefresh = null
+    }
   }
 
   const load = async () => {

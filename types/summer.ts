@@ -1,6 +1,7 @@
 export type CampusName = 'Toluca' | 'Metepec'
 export type CampusFilter = CampusName | null
 export type ProgramKind = 'husky_dreamers' | 'clinica_futbol' | 'unassigned'
+export type ProgramScope = Exclude<ProgramKind, 'unassigned'>
 export type AttendanceStatus = 'present' | 'absent' | 'unmarked'
 
 export type StudentContact = {
@@ -101,6 +102,7 @@ export type AttendanceHistoryRow = {
   name: string
   plantelLabel: string
   campus: CampusName
+  program: ProgramKind
 }
 
 export type AttendanceHistoryDay = {
