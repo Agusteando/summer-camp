@@ -68,6 +68,18 @@ export const useSummerScope = () => {
     persist()
   }
 
+  const back = () => {
+    if (program.value) {
+      program.value = null
+      persist()
+      return
+    }
+    if (campus.value) {
+      campus.value = null
+      persist()
+    }
+  }
+
   const clear = () => {
     campus.value = null
     program.value = null
@@ -81,5 +93,5 @@ export const useSummerScope = () => {
     && student.program === program.value
   )
 
-  return { campus, program, ready, initialize, reconcile, setCampus, setProgram, clear, matches }
+  return { campus, program, ready, initialize, reconcile, setCampus, setProgram, back, clear, matches }
 }

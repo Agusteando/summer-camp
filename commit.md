@@ -1,1 +1,1 @@
-Restaura la navegación contextual por grupos de edad
+Reemplaza el reinicio por navegación progresiva hacia atrás

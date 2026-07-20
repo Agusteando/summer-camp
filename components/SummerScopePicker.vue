@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Dumbbell, GraduationCap, MapPin, Pencil } from '@lucide/vue'
+import { ArrowLeft, Dumbbell, GraduationCap, MapPin } from '@lucide/vue'
 import { PROGRAM_ORDER, programLabel } from '~/shared/catalog'
 import type { CampusFilter, CampusName, PlantelSummary, ProgramScope } from '~/types/summer'
 
@@ -12,7 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   campus: [campus: CampusName]
   program: [program: ProgramScope]
-  reset: []
+  back: []
 }>()
 
 const campusSection = ref<HTMLElement | null>(null)
@@ -49,6 +49,14 @@ watch(() => props.selectedCampus, async (campus, previous) => {
 
 <template>
   <section class="scope-picker" :class="{ 'scope-picker--program': selectedCampus }" aria-label="Seleccionar grupo">
+    <div v-if="selectedCampus" class="scope-picker__navigation">
+      <button class="scope-back-button" type="button" aria-label="Volver a campus" @click="emit('back')">
+        <ArrowLeft :size="17" />
+        <span>Atrás</span>
+      </button>
+      <span class="scope-picker__current"><MapPin :size="15" /><strong>{{ selectedCampus }}</strong></span>
+    </div>
+
     <header class="scope-picker__header">
       <div class="scope-picker__step">
         <span>{{ selectedCampus ? 'Modalidad' : 'Campus' }}</span>
@@ -56,13 +64,6 @@ watch(() => props.selectedCampus, async (campus, previous) => {
       </div>
       <h2>{{ selectedCampus ? 'Elige modalidad' : 'Elige campus' }}</h2>
     </header>
-
-    <button v-if="selectedCampus" class="scope-selection-chip" type="button" aria-label="Cambiar campus" @click="emit('reset')">
-      <MapPin :size="18" />
-      <strong>{{ selectedCampus }}</strong>
-      <span>Cambiar</span>
-      <Pencil :size="14" />
-    </button>
 
     <div v-if="!selectedCampus" ref="campusSection" class="scope-options scope-options--campus">
       <button

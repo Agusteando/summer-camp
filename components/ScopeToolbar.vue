@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, MapPin, RotateCcw } from '@lucide/vue'
+import { ArrowLeft, Download, MapPin } from '@lucide/vue'
 import { programLabel } from '~/shared/catalog'
 import type { CampusName, ProgramScope } from '~/types/summer'
 
@@ -11,7 +11,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  reset: []
+  back: []
   export: []
 }>()
 </script>
@@ -19,19 +19,22 @@ const emit = defineEmits<{
 <template>
   <section class="scope-toolbar" aria-label="Grupo seleccionado">
     <div class="scope-toolbar__main">
-      <div class="scope-toolbar__selection">
-        <span class="scope-toolbar__icon"><MapPin :size="18" /></span>
-        <div class="scope-toolbar__labels">
-          <strong>{{ props.campus }}</strong>
-          <span>{{ programLabel(props.program) }}</span>
+      <div class="scope-toolbar__leading">
+        <button class="scope-back-button scope-back-button--toolbar" type="button" title="Volver a modalidades" aria-label="Volver a modalidades" @click="emit('back')">
+          <ArrowLeft :size="17" />
+          <span>Atrás</span>
+        </button>
+        <div class="scope-toolbar__selection">
+          <span class="scope-toolbar__icon"><MapPin :size="18" /></span>
+          <div class="scope-toolbar__labels">
+            <strong>{{ props.campus }}</strong>
+            <span>{{ programLabel(props.program) }}</span>
+          </div>
+          <span class="scope-toolbar__count" :aria-label="`${props.total} alumnos`">{{ props.total }}</span>
         </div>
-        <span class="scope-toolbar__count" :aria-label="`${props.total} alumnos`">{{ props.total }}</span>
       </div>
       <div class="scope-toolbar__actions">
         <slot name="utility" />
-        <button class="secondary-button secondary-button--icon" type="button" title="Reiniciar selección" aria-label="Reiniciar selección" @click="emit('reset')">
-          <RotateCcw :size="16" />
-        </button>
         <button class="primary-button" type="button" :disabled="exporting || !total" @click="emit('export')">
           <Download :size="17" /><span>{{ exporting ? 'Preparando…' : 'Excel' }}</span>
         </button>

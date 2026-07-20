@@ -64,8 +64,8 @@ const setAgeGroup = async (group: AgeGroupView) => {
   search.value = ''
   await focusWorkspace()
 }
-const resetScope = async () => {
-  scope.clear()
+const goBack = async () => {
+  scope.back()
   ageView.reset()
   search.value = ''
   await nextTick()
@@ -117,7 +117,7 @@ onBeforeUnmount(() => summer.stopPolling())
           :selected-program="scope.program.value"
           @campus="setCampus"
           @program="setProgram"
-          @reset="resetScope"
+          @back="goBack"
         />
       </div>
 
@@ -128,7 +128,7 @@ onBeforeUnmount(() => summer.stopPolling())
             :program="scope.program.value"
             :total="scopedStudents.length"
             :exporting="excel.exporting.value"
-            @reset="resetScope"
+            @back="goBack"
             @export="exportAttendance"
           >
             <template #utility>
