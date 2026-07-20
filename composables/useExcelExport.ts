@@ -66,11 +66,12 @@ export const useExcelExport = () => {
         'Desayuno': student.services.breakfast ? 'Sí' : 'No',
         'Comida': student.services.lunch ? 'Sí' : 'No',
         'Cena': student.services.dinner ? 'Sí' : 'No',
-        'Horario extendido': student.services.extendedTime ? 'Sí' : 'No',
+        'Servicio extra': student.services.extendedTime ? 'Sí' : 'No',
         'Contacto principal': student.contacts.primary.name,
         'Parentesco': student.contacts.primary.relation,
         'Teléfono principal': student.contacts.primary.phone,
         'Contacto alterno': student.contacts.alternate.name,
+        'Parentesco alterno': student.contacts.alternate.relation,
         'Teléfono alterno': student.contacts.alternate.phone,
         'Alergias / notas médicas': student.allergies,
         'Observaciones': student.observations
@@ -81,7 +82,7 @@ export const useExcelExport = () => {
       studentsSheet['!cols'] = [
         { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 22 },
         ...(options.includeAttendance ? [{ wch: 14 }] : []),
-        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 32 }, { wch: 40 }
+        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 32 }, { wch: 40 }
       ]
       XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Alumnos')
 

@@ -1,1 +1,1 @@
-Reemplaza el reinicio por navegación progresiva hacia atrás
+Restaura servicios visibles, filtros rápidos y contactos alternos

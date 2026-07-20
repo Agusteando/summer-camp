@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { CloudOff, Search, UsersRound, X } from '@lucide/vue'
-import { ageGroupViewLabel, plantelSortIndex } from '~/shared/catalog'
-import type { AgeGroupView, CampusName, ProgramScope } from '~/types/summer'
+import { ageGroupViewLabel, plantelSortIndex, serviceViewLabel } from '~/shared/catalog'
+import type { AgeGroupView, CampusName, ProgramScope, ServiceView } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
 const scope = useSummerScope()
 const ageView = useAgeGroupView()
+const serviceView = useServiceView()
 const excel = useExcelExport()
 scope.initialize()
 
@@ -21,12 +22,16 @@ const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('e
 const scopedStudents = computed(() => students.value
   .filter(scope.matches)
   .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.name.localeCompare(b.name, 'es-MX')))
-const groupStudents = computed(() => scopedStudents.value.filter(ageView.matches))
-const visibleStudents = computed(() => groupStudents.value.filter((student) => {
+const ageStudents = computed(() => scopedStudents.value.filter(ageView.matches))
+const serviceStudents = computed(() => ageStudents.value.filter(serviceView.matches))
+const visibleStudents = computed(() => serviceStudents.value.filter((student) => {
   if (!normalizedSearch.value) return true
   return `${student.name} ${student.folio} ${student.plantel} ${student.plantelLabel}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)
 }))
 const activeAgeLabel = computed(() => ageGroupViewLabel(ageView.activeGroup.value))
+const activeContextLabel = computed(() => serviceView.activeService.value === 'all'
+  ? activeAgeLabel.value
+  : `${activeAgeLabel.value} · ${serviceViewLabel(serviceView.activeService.value)}`)
 
 const scrollTo = async (element: HTMLElement | null) => {
   if (!import.meta.client || !element) return
@@ -45,24 +50,35 @@ const focusWorkspace = async () => {
   window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? 'auto' : 'smooth' })
 }
 
-const setCampus = (campus: CampusName) => {
+const resetContextFilters = () => {
   ageView.reset()
+  serviceView.reset()
+}
+const setCampus = (campus: CampusName) => {
+  resetContextFilters()
   scope.setCampus(campus)
 }
 const setProgram = (program: ProgramScope) => {
-  ageView.reset()
+  resetContextFilters()
   scope.setProgram(program)
   search.value = ''
 }
 const setAgeGroup = async (group: AgeGroupView) => {
   if (ageView.activeGroup.value === group) return
   ageView.setGroup(group)
+  serviceView.reconcile(ageStudents.value)
+  search.value = ''
+  await focusWorkspace()
+}
+const setService = async (service: ServiceView) => {
+  if (serviceView.activeService.value === service) return
+  serviceView.setService(service)
   search.value = ''
   await focusWorkspace()
 }
 const goBack = async () => {
   scope.back()
-  ageView.reset()
+  resetContextFilters()
   search.value = ''
   await nextTick()
   await scrollTo(selectionAnchor.value)
@@ -84,6 +100,7 @@ watch(() => scope.ready.value, async (ready, previous) => {
 })
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
 watch(scopedStudents, (value) => ageView.reconcile(value), { deep: true, immediate: true })
+watch(ageStudents, (value) => serviceView.reconcile(value), { deep: true, immediate: true })
 
 onMounted(() => {
   summer.startPolling()
@@ -125,11 +142,18 @@ onBeforeUnmount(() => summer.stopPolling())
             @export="exportList"
           >
             <template #context>
-              <AgeGroupSwitcher
-                :students="scopedStudents"
-                :model-value="ageView.activeGroup.value"
-                @update:model-value="setAgeGroup"
-              />
+              <div class="scope-context-filters">
+                <AgeGroupSwitcher
+                  :students="scopedStudents"
+                  :model-value="ageView.activeGroup.value"
+                  @update:model-value="setAgeGroup"
+                />
+                <ServiceFilterSwitcher
+                  :students="ageStudents"
+                  :model-value="serviceView.activeService.value"
+                  @update:model-value="setService"
+                />
+              </div>
             </template>
           </ScopeToolbar>
         </div>
@@ -145,7 +169,7 @@ onBeforeUnmount(() => summer.stopPolling())
         <section ref="workspaceAnchor" class="list-workspace workspace-anchor">
           <header class="list-workspace__header">
             <div>
-              <small>{{ activeAgeLabel }}</small>
+              <small>{{ activeContextLabel }}</small>
               <h2 aria-live="polite">{{ visibleStudents.length }} alumno{{ visibleStudents.length === 1 ? '' : 's' }}</h2>
             </div>
             <label class="compact-search">
@@ -164,7 +188,7 @@ onBeforeUnmount(() => summer.stopPolling())
           <div v-else class="empty-state">
             <img src="/icons/dinos.png" alt="">
             <strong>Sin alumnos</strong>
-            <p>{{ search ? 'Prueba con otro nombre o folio.' : 'No hay alumnos en este grupo de edad.' }}</p>
+            <p>{{ search ? 'Prueba con otro nombre o folio.' : 'No hay alumnos con este filtro.' }}</p>
           </div>
         </section>
       </template>

@@ -1,4 +1,4 @@
-import type { AgeGroupKey, AgeGroupView, CampusName, ProgramKind, ProgramScope } from '~/types/summer'
+import type { AgeGroupKey, AgeGroupView, CampusName, ProgramKind, ProgramScope, ServiceView, StudentServiceKey } from '~/types/summer'
 
 export const PLANTEL_ORDER = ['PREET', 'PT', 'ST', 'PREEM', 'PM', 'SM'] as const
 
@@ -40,6 +40,18 @@ export const programShortLabel = (program: ProgramScope) => ({
   husky_dreamers: 'Curso',
   clinica_futbol: 'Clínica'
 })[program]
+
+
+export const SERVICE_FILTERS: Array<{ key: StudentServiceKey; label: string; shortLabel: string }> = [
+  { key: 'breakfast', label: 'Desayuno', shortLabel: 'Desayuno' },
+  { key: 'lunch', label: 'Comida', shortLabel: 'Comida' },
+  { key: 'dinner', label: 'Cena', shortLabel: 'Cena' },
+  { key: 'extendedTime', label: 'Servicio extra', shortLabel: 'Extra' }
+]
+
+export const serviceViewLabel = (service: ServiceView) => service === 'all'
+  ? 'Todos los servicios'
+  : SERVICE_FILTERS.find((item) => item.key === service)?.label || service
 
 export const AGE_GROUPS: Array<{ key: AgeGroupKey; label: string; min: number; max: number; icon: string }> = [
   { key: 'group-1', label: '3–5', min: 3, max: 5, icon: '/icons/abejas.png' },

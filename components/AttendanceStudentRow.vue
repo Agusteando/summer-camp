@@ -17,6 +17,7 @@ const statusLabel = computed(() => ({ present: 'Presente', absent: 'Ausente', un
     <div class="attendance-row__identity">
       <strong>{{ student.name }}</strong>
       <small>{{ student.age !== null ? `${student.age} años` : 'Sin edad' }} · {{ student.plantel }} · #{{ student.folio }}</small>
+      <StudentServiceLabels :services="student.services" compact />
     </div>
     <span class="attendance-row__status">{{ statusLabel }}</span>
     <div class="attendance-row__actions">

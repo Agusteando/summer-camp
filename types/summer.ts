@@ -19,6 +19,9 @@ export type StudentServices = {
   extendedTime: boolean
 }
 
+export type StudentServiceKey = keyof StudentServices
+export type ServiceView = 'all' | StudentServiceKey
+
 export type StudentSchedule = {
   entry: string
   exit: string
