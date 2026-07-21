@@ -1,1 +1,1 @@
-Añade pases de asistencia independientes por servicio
+Añade un gitignore completo para Nuxt y Vercel
