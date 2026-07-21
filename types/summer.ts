@@ -12,15 +12,14 @@ export type StudentContact = {
   phone: string
 }
 
-export type StudentServices = {
-  breakfast: boolean
-  lunch: boolean
-  dinner: boolean
-  extendedTime: boolean
-}
+export type StudentServiceKey = 'breakfast' | 'lunch' | 'dinner' | 'extendedTime' | 'transport'
+export type AttendanceType = 'general' | StudentServiceKey
 
-export type StudentServiceKey = keyof StudentServices
+export type StudentServices = Record<StudentServiceKey, boolean>
+export type StudentServiceValues = Record<StudentServiceKey, string>
 export type ServiceView = 'all' | StudentServiceKey
+export type AttendanceByType = Record<AttendanceType, AttendanceStatus>
+export type AttendanceUpdatedAtByType = Record<AttendanceType, string | null>
 
 export type StudentSchedule = {
   entry: string
@@ -40,6 +39,7 @@ export type SummerStudent = {
   plantelLabel: string
   campus: CampusName
   services: StudentServices
+  serviceValues: StudentServiceValues
   schedule: StudentSchedule
   contacts: {
     primary: StudentContact
@@ -49,6 +49,8 @@ export type SummerStudent = {
   observations: string
   attendance: AttendanceStatus
   attendanceUpdatedAt: string | null
+  attendanceByType: AttendanceByType
+  attendanceUpdatedAtByType: AttendanceUpdatedAtByType
   source: {
     sheet: string
     row: number
@@ -67,6 +69,7 @@ export type PlantelSummary = {
   lunch: number
   dinner: number
   extendedTime: number
+  transport: number
   huskyDreamers: number
   footballClinic: number
 }
@@ -93,6 +96,7 @@ export type AttendanceMutation = {
   deviceId: string
   studentId: string
   date: string
+  attendanceType: AttendanceType
   status: AttendanceStatus
   clientTimestamp: string
 }
@@ -100,6 +104,7 @@ export type AttendanceMutation = {
 export type AttendanceHistoryRow = {
   date: string
   studentId: string
+  attendanceType: AttendanceType
   status: Exclude<AttendanceStatus, 'unmarked'>
   plantel: string
   actorName: string

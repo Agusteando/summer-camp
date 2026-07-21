@@ -6,6 +6,7 @@ SELECT
   `summer_year`,
   `attendance_date`,
   `student_id`,
+  `attendance_type`,
   `status`,
   `plantel`,
   `actor_name`,

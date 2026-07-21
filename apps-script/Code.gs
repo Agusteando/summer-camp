@@ -1,5 +1,5 @@
 const SUMMER_API = Object.freeze({
-  version: 1,
+  version: 2,
   spreadsheetId: '1c5BnKpZXeVeyFIAx01GbVYlp3uujfFu24Eat115ZQYg',
   sheetNames: ['PREEM', 'PREET', 'PM', 'PT', 'SM', 'ST'],
   cacheSeconds: 60,
@@ -38,6 +38,10 @@ const HEADER_ALIASES = Object.freeze({
   observations: ['Observaciones']
 });
 
+const OPTIONAL_HEADER_ALIASES = Object.freeze({
+  transport: ['Transporte', 'Servicio de transporte', 'Ruta de transporte']
+});
+
 function doGet(e) {
   try {
     const action = cleanText_(e && e.parameter && e.parameter.action).toLowerCase() || 'snapshot';
@@ -59,6 +63,10 @@ function doGet(e) {
         version: SUMMER_API.version,
         requiredHeaders: Object.keys(HEADER_ALIASES).reduce(function (result, key) {
           result[key] = HEADER_ALIASES[key].slice();
+          return result;
+        }, {}),
+        optionalHeaders: Object.keys(OPTIONAL_HEADER_ALIASES).reduce(function (result, key) {
+          result[key] = OPTIONAL_HEADER_ALIASES[key].slice();
           return result;
         }, {}),
         sheets: SUMMER_API.sheetNames.slice(),
@@ -235,10 +243,18 @@ function buildSnapshot_() {
           plantelLabel: meta.label,
           campus: meta.campus,
           services: {
-            breakfast: parseBoolean_(cellText_(displayRow, headerMap.breakfast)),
-            lunch: parseBoolean_(cellText_(displayRow, headerMap.lunch)),
-            dinner: parseBoolean_(cellText_(displayRow, headerMap.dinner)),
-            extendedTime: parseBoolean_(cellText_(displayRow, headerMap.extendedTime))
+            breakfast: parseServiceActive_(cellText_(displayRow, headerMap.breakfast)),
+            lunch: parseServiceActive_(cellText_(displayRow, headerMap.lunch)),
+            dinner: parseServiceActive_(cellText_(displayRow, headerMap.dinner)),
+            extendedTime: parseServiceActive_(cellText_(displayRow, headerMap.extendedTime)),
+            transport: parseServiceActive_(cellText_(displayRow, headerMap.transport))
+          },
+          serviceValues: {
+            breakfast: cellText_(displayRow, headerMap.breakfast),
+            lunch: cellText_(displayRow, headerMap.lunch),
+            dinner: cellText_(displayRow, headerMap.dinner),
+            extendedTime: cellText_(displayRow, headerMap.extendedTime),
+            transport: cellText_(displayRow, headerMap.transport)
           },
           schedule: {
             entry: formatTime_(rawRow[headerMap.entryTime], displayRow[headerMap.entryTime], timezone),
@@ -340,6 +356,7 @@ function buildSummaries_(students) {
         lunch: 0,
         dinner: 0,
         extendedTime: 0,
+        transport: 0,
         huskyDreamers: 0,
         footballClinic: 0
       };
@@ -351,6 +368,7 @@ function buildSummaries_(students) {
     if (student.services.lunch) summary.lunch += 1;
     if (student.services.dinner) summary.dinner += 1;
     if (student.services.extendedTime) summary.extendedTime += 1;
+    if (student.services.transport) summary.transport += 1;
     if (normalizeText_(student.modality) === 'husky dreamers') summary.huskyDreamers += 1;
     if (normalizeText_(student.modality) === 'clinica de futbol') summary.footballClinic += 1;
   });
@@ -376,6 +394,14 @@ function resolveHeaders_(headerRow, sheetName) {
     }
     result[key] = normalizedHeaders[match];
   });
+
+  Object.keys(OPTIONAL_HEADER_ALIASES).forEach(function (key) {
+    const aliases = OPTIONAL_HEADER_ALIASES[key];
+    const match = aliases.map(normalizeText_).find(function (alias) {
+      return Object.prototype.hasOwnProperty.call(normalizedHeaders, alias);
+    });
+    result[key] = match ? normalizedHeaders[match] : null;
+  });
   return result;
 }
 
@@ -399,9 +425,10 @@ function constantTimeEquals_(left, right) {
   return mismatch === 0;
 }
 
-function parseBoolean_(value) {
+function parseServiceActive_(value) {
   const normalized = normalizeText_(value);
-  return normalized === 'si' || normalized === 'yes' || normalized === 'true' || normalized === '1';
+  if (!normalized) return false;
+  return ['no', 'false', '0', 'ninguno', 'ninguna', 'sin servicio', 'no aplica', 'na', 'n a'].indexOf(normalized) === -1;
 }
 
 function parseAge_(rawValue, displayValue) {

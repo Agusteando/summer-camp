@@ -1,4 +1,5 @@
-import type { AttendanceMutation, AttendanceStatus, SnapshotResponse, SummerStudent } from '~/types/summer'
+import { ATTENDANCE_TYPES, attendanceStatusFor } from '~/shared/catalog'
+import type { AttendanceByType, AttendanceMutation, AttendanceStatus, AttendanceType, AttendanceUpdatedAtByType, SnapshotResponse, SummerStudent } from '~/types/summer'
 
 let activeRefresh: { date: string; promise: Promise<boolean> } | null = null
 
@@ -12,19 +13,48 @@ const makeId = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID =
   ? crypto.randomUUID()
   : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
+const blankAttendance = () => Object.fromEntries(ATTENDANCE_TYPES.map((type) => [type.key, 'unmarked'])) as AttendanceByType
+const blankAttendanceTimes = () => Object.fromEntries(ATTENDANCE_TYPES.map((type) => [type.key, null])) as AttendanceUpdatedAtByType
+
+const withAttendance = (student: SummerStudent, type: AttendanceType, status: AttendanceStatus, updatedAt: string | null): SummerStudent => {
+  const attendanceByType = { ...blankAttendance(), ...(student.attendanceByType || {}), [type]: status }
+  const attendanceUpdatedAtByType = { ...blankAttendanceTimes(), ...(student.attendanceUpdatedAtByType || {}), [type]: updatedAt }
+  return {
+    ...student,
+    attendanceByType,
+    attendanceUpdatedAtByType,
+    attendance: type === 'general' ? status : attendanceByType.general,
+    attendanceUpdatedAt: type === 'general' ? updatedAt : attendanceUpdatedAtByType.general
+  }
+}
+
 export const useSummerData = () => {
-  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-sheets-v1', () => null)
-  const selectedDate = useState('summer-date-sheets-v1', localDate)
-  const loading = useState('summer-loading-sheets-v1', () => false)
-  const updating = useState('summer-updating-sheets-v1', () => false)
-  const error = useState<string | null>('summer-error-sheets-v1', () => null)
-  const initialized = useState('summer-initialized-sheets-v1', () => false)
-  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-sheets-v1', () => null)
+  const snapshot = useState<SnapshotResponse | null>('summer-snapshot-sheets-v3', () => null)
+  const selectedDate = useState('summer-date-sheets-v3', localDate)
+  const loading = useState('summer-loading-sheets-v3', () => false)
+  const updating = useState('summer-updating-sheets-v3', () => false)
+  const error = useState<string | null>('summer-error-sheets-v3', () => null)
+  const initialized = useState('summer-initialized-sheets-v3', () => false)
+  const poller = useState<ReturnType<typeof setInterval> | null>('summer-poller-sheets-v3', () => null)
   const queue = useAttendanceQueue()
   const device = useDeviceIdentity()
   const config = useRuntimeConfig()
 
-  const cacheKey = () => `summer-snapshot:sheets-v1:${selectedDate.value}`
+  const cacheKey = () => `summer-snapshot:sheets-v3:${selectedDate.value}`
+  const legacyCacheKey = () => `summer-snapshot:sheets-v2:${selectedDate.value}`
+
+  const normalizeSnapshot = (value: SnapshotResponse): SnapshotResponse => ({
+    ...value,
+    students: value.students.map((student) => {
+      const attendanceByType = { ...blankAttendance(), ...(student.attendanceByType || {}), general: student.attendance || student.attendanceByType?.general || 'unmarked' }
+      const attendanceUpdatedAtByType = {
+        ...blankAttendanceTimes(),
+        ...(student.attendanceUpdatedAtByType || {}),
+        general: student.attendanceUpdatedAt || student.attendanceUpdatedAtByType?.general || null
+      }
+      return { ...student, attendance: attendanceByType.general, attendanceUpdatedAt: attendanceUpdatedAtByType.general, attendanceByType, attendanceUpdatedAtByType }
+    })
+  })
 
   const saveLocal = () => {
     if (!import.meta.client || !snapshot.value) return
@@ -38,9 +68,9 @@ export const useSummerData = () => {
       return {
         ...summary,
         total: rows.length,
-        present: rows.filter((student) => student.attendance === 'present').length,
-        absent: rows.filter((student) => student.attendance === 'absent').length,
-        unmarked: rows.filter((student) => student.attendance === 'unmarked').length
+        present: rows.filter((student) => attendanceStatusFor(student, 'general') === 'present').length,
+        absent: rows.filter((student) => attendanceStatusFor(student, 'general') === 'absent').length,
+        unmarked: rows.filter((student) => attendanceStatusFor(student, 'general') === 'unmarked').length
       }
     })
   }
@@ -51,11 +81,18 @@ export const useSummerData = () => {
     const latest = new Map<string, AttendanceMutation>()
     pending
       .filter((item) => item.date === selectedDate.value)
-      .forEach((item) => latest.set(item.studentId, item))
+      .forEach((item) => {
+        const attendanceType = item.attendanceType || 'general'
+        latest.set(`${item.studentId}:${attendanceType}`, { ...item, attendanceType })
+      })
     if (!latest.size) return
     snapshot.value.students = snapshot.value.students.map((student) => {
-      const mutation = latest.get(student.id)
-      return mutation ? { ...student, attendance: mutation.status, attendanceUpdatedAt: mutation.clientTimestamp } : student
+      let next = student
+      ATTENDANCE_TYPES.forEach(({ key }) => {
+        const mutation = latest.get(`${student.id}:${key}`)
+        if (mutation) next = withAttendance(next, key, mutation.status, mutation.clientTimestamp)
+      })
+      return next
     })
     recalculateSummaries()
   }
@@ -63,15 +100,18 @@ export const useSummerData = () => {
   const paintLocal = async () => {
     if (!import.meta.client) return false
     try {
-      const raw = localStorage.getItem(cacheKey())
+      const currentKey = cacheKey()
+      const raw = localStorage.getItem(currentKey) || localStorage.getItem(legacyCacheKey())
       if (!raw) return false
       const parsed = JSON.parse(raw) as SnapshotResponse
       if (!Array.isArray(parsed?.students) || !Array.isArray(parsed?.summaries)) return false
-      snapshot.value = parsed
+      snapshot.value = normalizeSnapshot(parsed)
       await applyPending()
+      saveLocal()
       return true
     } catch {
       localStorage.removeItem(cacheKey())
+      localStorage.removeItem(legacyCacheKey())
       return false
     }
   }
@@ -95,7 +135,7 @@ export const useSummerData = () => {
           throw new Error('La respuesta de alumnos no tiene la estructura esperada.')
         }
         if (selectedDate.value !== requestedDate) return false
-        snapshot.value = result
+        snapshot.value = normalizeSnapshot(result)
         await applyPending()
         saveLocal()
         if (import.meta.client) void queue.flush()
@@ -130,22 +170,28 @@ export const useSummerData = () => {
     await refresh(painted)
   }
 
-  const markAttendance = async (student: SummerStudent, requested: Exclude<AttendanceStatus, 'unmarked'>) => {
+  const markAttendance = async (
+    student: SummerStudent,
+    requested: Exclude<AttendanceStatus, 'unmarked'>,
+    attendanceType: AttendanceType = 'general'
+  ) => {
     if (!snapshot.value) return
-    const status: AttendanceStatus = student.attendance === requested ? 'unmarked' : requested
+    const current = attendanceStatusFor(student, attendanceType)
+    const status: AttendanceStatus = current === requested ? 'unmarked' : requested
     const now = new Date().toISOString()
     snapshot.value.students = snapshot.value.students.map((row) => row.id === student.id
-      ? { ...row, attendance: status, attendanceUpdatedAt: now }
+      ? withAttendance(row, attendanceType, status, now)
       : row)
     recalculateSummaries()
     saveLocal()
 
     const mutation: AttendanceMutation = {
-      queueKey: `${selectedDate.value}:${student.id}`,
+      queueKey: `${selectedDate.value}:${attendanceType}:${student.id}`,
       idempotencyKey: makeId(),
       deviceId: device.get(),
       studentId: student.id,
       date: selectedDate.value,
+      attendanceType,
       status,
       clientTimestamp: now
     }

@@ -1,7 +1,10 @@
-import type { AttendanceMutation } from '../../../../types/summer'
+import { ATTENDANCE_TYPES } from '../../../../shared/catalog'
+import type { AttendanceMutation, AttendanceType } from '../../../../types/summer'
 import { saveAttendanceBatch } from '../../../utils/attendance-store'
 import { readSheetSource } from '../../../utils/sheet-source'
 import { cleanHeaderValue, isoDate, safeClientTimestamp } from '../../../utils/validation'
+
+const VALID_ATTENDANCE_TYPES = new Set<AttendanceType>(ATTENDANCE_TYPES.map((type) => type.key))
 
 export default defineEventHandler(async (event) => {
   setResponseHeader(event, 'Cache-Control', 'no-store')
@@ -16,15 +19,18 @@ export default defineEventHandler(async (event) => {
     const status = value?.status === 'present' || value?.status === 'absent' || value?.status === 'unmarked' ? value.status : null
     const studentId = cleanHeaderValue(value?.studentId, 120)
     const idempotencyKey = cleanHeaderValue(value?.idempotencyKey, 160)
-    if (!date || !status || !studentId || !idempotencyKey) {
-      throw createError({ statusCode: 400, message: 'Una marcación contiene fecha, estado, alumno o idempotencia inválidos.' })
+    const rawAttendanceType = cleanHeaderValue(value?.attendanceType || 'general', 40) as AttendanceType
+    const attendanceType = VALID_ATTENDANCE_TYPES.has(rawAttendanceType) ? rawAttendanceType : null
+    if (!date || !status || !studentId || !idempotencyKey || !attendanceType) {
+      throw createError({ statusCode: 400, message: 'Una marcación contiene fecha, tipo, estado, alumno o idempotencia inválidos.' })
     }
     return {
-      queueKey: cleanHeaderValue(value?.queueKey || `${date}:${studentId}`, 180),
+      queueKey: cleanHeaderValue(value?.queueKey || `${date}:${attendanceType}:${studentId}`, 220),
       idempotencyKey,
       deviceId: cleanHeaderValue(value?.deviceId || deviceHeader, 120),
       studentId,
       date,
+      attendanceType,
       status,
       clientTimestamp: safeClientTimestamp(value?.clientTimestamp)
     }

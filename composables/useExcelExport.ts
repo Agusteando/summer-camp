@@ -1,5 +1,5 @@
-import { programLabel } from '~/shared/catalog'
-import type { CampusName, ProgramScope, SummerStudent } from '~/types/summer'
+import { attendanceStatusFor, attendanceTypeLabel, programLabel, serviceExportValue } from '~/shared/catalog'
+import type { AttendanceType, CampusName, ProgramScope, SummerStudent } from '~/types/summer'
 
 type ExportOptions = {
   students: SummerStudent[]
@@ -7,9 +7,10 @@ type ExportOptions = {
   program: ProgramScope
   date?: string
   includeAttendance?: boolean
+  attendanceType?: AttendanceType
 }
 
-const attendanceLabel = (status: SummerStudent['attendance']) => ({
+const attendanceLabel = (status: ReturnType<typeof attendanceStatusFor>) => ({
   present: 'Presente',
   absent: 'Ausente',
   unmarked: 'Sin marcar'
@@ -33,13 +34,15 @@ export const useExcelExport = () => {
     try {
       const XLSX = await import('xlsx')
       const workbook = XLSX.utils.book_new()
-      const present = options.students.filter((student) => student.attendance === 'present').length
-      const absent = options.students.filter((student) => student.attendance === 'absent').length
-      const unmarked = options.students.filter((student) => student.attendance === 'unmarked').length
+      const attendanceType = options.attendanceType || 'general'
+      const present = options.students.filter((student) => attendanceStatusFor(student, attendanceType) === 'present').length
+      const absent = options.students.filter((student) => attendanceStatusFor(student, attendanceType) === 'absent').length
+      const unmarked = options.students.filter((student) => attendanceStatusFor(student, attendanceType) === 'unmarked').length
       const summaryRows = [
         ['Campus', options.campus],
         ['Modalidad', programLabel(options.program)],
         ...(options.date ? [['Fecha', options.date]] : []),
+        ...(options.includeAttendance ? [['Pase', attendanceTypeLabel(attendanceType)]] : []),
         ['Total de alumnos', options.students.length],
         ...(options.includeAttendance ? [
           ['Presentes', present],
@@ -60,13 +63,14 @@ export const useExcelExport = () => {
         'Plantel': student.plantel,
         'Plantel completo': student.plantelLabel,
         'Modalidad': programLabel(student.program),
-        ...(options.includeAttendance ? { 'Asistencia': attendanceLabel(student.attendance) } : {}),
+        ...(options.includeAttendance ? { 'Asistencia': attendanceLabel(attendanceStatusFor(student, attendanceType)) } : {}),
         'Entrada': student.schedule.entry,
         'Salida': student.schedule.exit,
-        'Desayuno': student.services.breakfast ? 'Sí' : 'No',
-        'Comida': student.services.lunch ? 'Sí' : 'No',
-        'Cena': student.services.dinner ? 'Sí' : 'No',
-        'Servicio extra': student.services.extendedTime ? 'Sí' : 'No',
+        'Desayuno': serviceExportValue(student.services.breakfast, student.serviceValues.breakfast),
+        'Comida': serviceExportValue(student.services.lunch, student.serviceValues.lunch),
+        'Cena': serviceExportValue(student.services.dinner, student.serviceValues.dinner),
+        'Tiempo extendido': serviceExportValue(student.services.extendedTime, student.serviceValues.extendedTime),
+        'Transporte': serviceExportValue(student.services.transport, student.serviceValues.transport),
         'Contacto principal': student.contacts.primary.name,
         'Parentesco': student.contacts.primary.relation,
         'Teléfono principal': student.contacts.primary.phone,
@@ -82,12 +86,13 @@ export const useExcelExport = () => {
       studentsSheet['!cols'] = [
         { wch: 6 }, { wch: 34 }, { wch: 12 }, { wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 24 }, { wch: 22 },
         ...(options.includeAttendance ? [{ wch: 14 }] : []),
-        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 32 }, { wch: 40 }
+        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 22 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 28 }, { wch: 16 }, { wch: 18 }, { wch: 32 }, { wch: 40 }
       ]
       XLSX.utils.book_append_sheet(workbook, studentsSheet, 'Alumnos')
 
-      const suffix = options.includeAttendance && options.date ? `-${options.date}` : ''
-      const filename = `summer-camp-${safeFilename(options.campus)}-${safeFilename(programLabel(options.program))}${suffix}.xlsx`
+      const attendanceSuffix = options.includeAttendance ? `-${safeFilename(attendanceTypeLabel(attendanceType))}` : ''
+      const dateSuffix = options.includeAttendance && options.date ? `-${options.date}` : ''
+      const filename = `summer-camp-${safeFilename(options.campus)}-${safeFilename(programLabel(options.program))}${attendanceSuffix}${dateSuffix}.xlsx`
       XLSX.writeFile(workbook, filename, { compression: true })
       return true
     } catch (cause: any) {

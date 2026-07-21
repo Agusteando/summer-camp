@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { CalendarDays, CheckCircle2, CloudOff, Search, UsersRound, X } from '@lucide/vue'
-import { ageGroupViewLabel, plantelSortIndex, serviceViewLabel } from '~/shared/catalog'
-import type { AgeGroupView, CampusName, ProgramScope, ServiceView, SummerStudent } from '~/types/summer'
+import { ageGroupViewLabel, attendanceStatusFor, attendanceTypeLabel, attendanceTypeShortLabel, plantelSortIndex } from '~/shared/catalog'
+import type { AgeGroupView, AttendanceType, CampusName, ProgramScope, SummerStudent } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
 const scope = useSummerScope()
 const ageView = useAgeGroupView()
-const serviceView = useServiceView()
+const attendanceTypeView = useAttendanceTypeView()
 const excel = useExcelExport()
 scope.initialize()
 
@@ -22,20 +22,20 @@ const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase('e
 const scopedStudents = computed(() => students.value
   .filter(scope.matches)
   .sort((a, b) => plantelSortIndex(a.plantel) - plantelSortIndex(b.plantel) || a.name.localeCompare(b.name, 'es-MX')))
-const ageStudents = computed(() => scopedStudents.value.filter(ageView.matches))
-const serviceStudents = computed(() => ageStudents.value.filter(serviceView.matches))
-const visibleStudents = computed(() => serviceStudents.value.filter((student) => {
+const attendanceRoster = computed(() => scopedStudents.value.filter(attendanceTypeView.matches))
+const ageStudents = computed(() => attendanceRoster.value.filter(ageView.matches))
+const visibleStudents = computed(() => ageStudents.value.filter((student) => {
   if (!normalizedSearch.value) return true
   return `${student.name} ${student.folio} ${student.plantel}`.toLocaleLowerCase('es-MX').includes(normalizedSearch.value)
 }))
-const present = computed(() => serviceStudents.value.filter((student) => student.attendance === 'present').length)
-const absent = computed(() => serviceStudents.value.filter((student) => student.attendance === 'absent').length)
-const pending = computed(() => serviceStudents.value.filter((student) => student.attendance === 'unmarked').length)
-const completed = computed(() => serviceStudents.value.length ? Math.round(((present.value + absent.value) / serviceStudents.value.length) * 100) : 0)
-const activeAgeLabel = computed(() => ageGroupViewLabel(ageView.activeGroup.value))
-const activeContextLabel = computed(() => serviceView.activeService.value === 'all'
-  ? activeAgeLabel.value
-  : `${activeAgeLabel.value} · ${serviceViewLabel(serviceView.activeService.value)}`)
+const statusFor = (student: SummerStudent) => attendanceStatusFor(student, attendanceTypeView.activeType.value)
+const present = computed(() => ageStudents.value.filter((student) => statusFor(student) === 'present').length)
+const absent = computed(() => ageStudents.value.filter((student) => statusFor(student) === 'absent').length)
+const pending = computed(() => ageStudents.value.filter((student) => statusFor(student) === 'unmarked').length)
+const completed = computed(() => ageStudents.value.length ? Math.round(((present.value + absent.value) / ageStudents.value.length) * 100) : 0)
+const activeAttendanceLabel = computed(() => attendanceTypeLabel(attendanceTypeView.activeType.value))
+const activeAttendanceShortLabel = computed(() => attendanceTypeShortLabel(attendanceTypeView.activeType.value))
+const activeContextLabel = computed(() => `${activeAttendanceLabel.value} · ${ageGroupViewLabel(ageView.activeGroup.value)}`)
 
 const scrollTo = async (element: HTMLElement | null) => {
   if (!import.meta.client || !element) return
@@ -54,48 +54,50 @@ const focusWorkspace = async () => {
   window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? 'auto' : 'smooth' })
 }
 
-const resetContextFilters = () => {
+const resetAttendanceContext = () => {
   ageView.reset()
-  serviceView.reset()
+  attendanceTypeView.reset()
 }
 const setCampus = (campus: CampusName) => {
-  resetContextFilters()
+  resetAttendanceContext()
   scope.setCampus(campus)
 }
 const setProgram = (program: ProgramScope) => {
-  resetContextFilters()
+  resetAttendanceContext()
   scope.setProgram(program)
   search.value = ''
+}
+const setAttendanceType = async (type: AttendanceType) => {
+  if (attendanceTypeView.activeType.value === type) return
+  attendanceTypeView.setType(type)
+  await nextTick()
+  ageView.reconcile(attendanceRoster.value)
+  search.value = ''
+  await focusWorkspace()
 }
 const setAgeGroup = async (group: AgeGroupView) => {
   if (ageView.activeGroup.value === group) return
   ageView.setGroup(group)
-  serviceView.reconcile(ageStudents.value)
-  search.value = ''
-  await focusWorkspace()
-}
-const setService = async (service: ServiceView) => {
-  if (serviceView.activeService.value === service) return
-  serviceView.setService(service)
   search.value = ''
   await focusWorkspace()
 }
 const goBack = async () => {
   scope.back()
-  resetContextFilters()
+  resetAttendanceContext()
   search.value = ''
   await nextTick()
   await scrollTo(selectionAnchor.value)
 }
-const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status)
+const mark = (student: SummerStudent, status: 'present' | 'absent') => summer.markAttendance(student, status, attendanceTypeView.activeType.value)
 const exportAttendance = () => {
   if (!scope.campus.value || !scope.program.value) return
   return excel.exportStudents({
-    students: scopedStudents.value,
+    students: attendanceRoster.value,
     campus: scope.campus.value,
     program: scope.program.value,
     date: summer.selectedDate.value,
-    includeAttendance: true
+    includeAttendance: true,
+    attendanceType: attendanceTypeView.activeType.value
   })
 }
 
@@ -106,8 +108,8 @@ watch(() => scope.ready.value, async (ready, previous) => {
   }
 })
 watch(summaries, (value) => scope.reconcile(value), { deep: true })
-watch(scopedStudents, (value) => ageView.reconcile(value), { deep: true, immediate: true })
-watch(ageStudents, (value) => serviceView.reconcile(value), { deep: true, immediate: true })
+watch(scopedStudents, (value) => attendanceTypeView.reconcile(value), { deep: true, immediate: true })
+watch(attendanceRoster, (value) => ageView.reconcile(value), { deep: true, immediate: true })
 
 onMounted(() => {
   summer.startPolling()
@@ -155,16 +157,16 @@ onBeforeUnmount(() => summer.stopPolling())
               </label>
             </template>
             <template #context>
-              <div class="scope-context-filters">
-                <AgeGroupSwitcher
+              <div class="scope-context-filters scope-context-filters--attendance">
+                <AttendanceTypeSwitcher
                   :students="scopedStudents"
+                  :model-value="attendanceTypeView.activeType.value"
+                  @update:model-value="setAttendanceType"
+                />
+                <AgeGroupSwitcher
+                  :students="attendanceRoster"
                   :model-value="ageView.activeGroup.value"
                   @update:model-value="setAgeGroup"
-                />
-                <ServiceFilterSwitcher
-                  :students="ageStudents"
-                  :model-value="serviceView.activeService.value"
-                  @update:model-value="setService"
                 />
               </div>
             </template>
@@ -175,13 +177,13 @@ onBeforeUnmount(() => summer.stopPolling())
 
         <div v-if="!connectivity.browserOnline.value || summer.pendingCount.value" class="offline-banner">
           <CloudOff :size="18" />
-          <span v-if="summer.pendingCount.value">{{ summer.pendingCount.value }} asistencia{{ summer.pendingCount.value === 1 ? '' : 's' }} pendiente{{ summer.pendingCount.value === 1 ? '' : 's' }} de sincronizar</span>
-          <span v-else>Sin conexión. Los cambios se enviarán después.</span>
+          <span v-if="summer.pendingCount.value">{{ summer.pendingCount.value }} marcación{{ summer.pendingCount.value === 1 ? '' : 'es' }} pendiente{{ summer.pendingCount.value === 1 ? '' : 's' }}</span>
+          <span v-else>Sin conexión</span>
         </div>
 
         <section ref="workspaceAnchor" class="attendance-workspace workspace-anchor">
           <div class="attendance-progress">
-            <div><UsersRound :size="17" /><strong>{{ serviceStudents.length }}</strong><span>Alumnos</span></div>
+            <div><UsersRound :size="17" /><strong>{{ ageStudents.length }}</strong><span>{{ activeAttendanceShortLabel }}</span></div>
             <div class="is-present"><CheckCircle2 :size="17" /><strong>{{ present }}</strong><span>Presentes</span></div>
             <div class="is-absent"><strong>{{ absent }}</strong><span>Ausentes</span></div>
             <div><strong>{{ pending }}</strong><span>Pendientes</span></div>
@@ -198,12 +200,19 @@ onBeforeUnmount(() => summer.stopPolling())
           </header>
 
           <div v-if="visibleStudents.length" class="attendance-list">
-            <AttendanceStudentRow v-for="(student, index) in visibleStudents" :key="student.id" :student="student" :index="index" @mark="mark" />
+            <AttendanceStudentRow
+              v-for="(student, index) in visibleStudents"
+              :key="student.id"
+              :student="student"
+              :index="index"
+              :status="statusFor(student)"
+              :attendance-type="attendanceTypeView.activeType.value"
+              @mark="mark"
+            />
           </div>
           <div v-else class="empty-state">
             <img src="/icons/abejas.png" alt="">
             <strong>Sin alumnos</strong>
-            <p>{{ search ? 'Prueba con otro nombre.' : 'No hay alumnos con este filtro.' }}</p>
           </div>
         </section>
       </template>

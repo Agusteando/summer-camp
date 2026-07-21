@@ -17,7 +17,7 @@ const phoneHref = (phone: string) => phone ? `tel:${phone.replace(/\D/g, '')}` :
         <small>{{ student.age !== null ? `${student.age} años` : 'Sin edad' }} · {{ student.plantel }} · #{{ student.folio }}</small>
       </span>
       <span class="roster-row__schedule"><Clock3 :size="14" />{{ student.schedule.entry || '—' }}–{{ student.schedule.exit || '—' }}</span>
-      <span class="roster-row__services"><StudentServiceLabels :services="student.services" compact /></span>
+      <span class="roster-row__services"><StudentServiceLabels :services="student.services" :values="student.serviceValues" compact /></span>
       <span class="roster-row__chevron" aria-hidden="true">›</span>
     </summary>
 

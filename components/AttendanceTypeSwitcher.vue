@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { BusFront, Coffee, Moon, Timer, Utensils } from '@lucide/vue'
-import type { ServiceView, StudentServiceKey, SummerStudent } from '~/types/summer'
+import { BusFront, ClipboardCheck, Coffee, Moon, Timer, Utensils } from '@lucide/vue'
+import type { AttendanceType, StudentServiceKey, SummerStudent } from '~/types/summer'
 
 const props = defineProps<{
   students: SummerStudent[]
-  modelValue: ServiceView
+  modelValue: AttendanceType
 }>()
 
 const emit = defineEmits<{
-  'update:modelValue': [value: ServiceView]
+  'update:modelValue': [value: AttendanceType]
 }>()
 
 const counts = computed<Record<StudentServiceKey, number>>(() => ({
@@ -21,56 +21,56 @@ const counts = computed<Record<StudentServiceKey, number>>(() => ({
 </script>
 
 <template>
-  <div class="service-filter-switcher" aria-label="Filtrar por servicio">
-    <span class="service-filter-switcher__label">Servicio</span>
-    <div class="service-filter-switcher__track">
+  <div class="attendance-type-switcher" aria-label="Tipo de asistencia">
+    <span class="attendance-type-switcher__label">Pase</span>
+    <div class="attendance-type-switcher__track">
       <button
         type="button"
-        class="service-filter-switcher__option"
-        :class="{ 'is-active': modelValue === 'all' }"
-        :aria-pressed="modelValue === 'all'"
-        @click="emit('update:modelValue', 'all')"
-      >Todos <b>{{ students.length }}</b></button>
+        class="attendance-type-switcher__option attendance-type-switcher__option--general"
+        :class="{ 'is-active': modelValue === 'general' }"
+        :aria-pressed="modelValue === 'general'"
+        @click="emit('update:modelValue', 'general')"
+      ><span><ClipboardCheck :size="17" /></span><strong>General</strong><b>{{ students.length }}</b></button>
       <button
         v-if="counts.breakfast"
         type="button"
-        class="service-filter-switcher__option service-filter-switcher__option--breakfast"
+        class="attendance-type-switcher__option attendance-type-switcher__option--breakfast"
         :class="{ 'is-active': modelValue === 'breakfast' }"
         :aria-pressed="modelValue === 'breakfast'"
         @click="emit('update:modelValue', 'breakfast')"
-      ><Coffee :size="13" />Desayuno <b>{{ counts.breakfast }}</b></button>
+      ><span><Coffee :size="17" /></span><strong>Desayuno</strong><b>{{ counts.breakfast }}</b></button>
       <button
         v-if="counts.lunch"
         type="button"
-        class="service-filter-switcher__option service-filter-switcher__option--lunch"
+        class="attendance-type-switcher__option attendance-type-switcher__option--lunch"
         :class="{ 'is-active': modelValue === 'lunch' }"
         :aria-pressed="modelValue === 'lunch'"
         @click="emit('update:modelValue', 'lunch')"
-      ><Utensils :size="13" />Comida <b>{{ counts.lunch }}</b></button>
+      ><span><Utensils :size="17" /></span><strong>Comida</strong><b>{{ counts.lunch }}</b></button>
       <button
         v-if="counts.dinner"
         type="button"
-        class="service-filter-switcher__option service-filter-switcher__option--dinner"
+        class="attendance-type-switcher__option attendance-type-switcher__option--dinner"
         :class="{ 'is-active': modelValue === 'dinner' }"
         :aria-pressed="modelValue === 'dinner'"
         @click="emit('update:modelValue', 'dinner')"
-      ><Moon :size="13" />Cena <b>{{ counts.dinner }}</b></button>
+      ><span><Moon :size="17" /></span><strong>Cena</strong><b>{{ counts.dinner }}</b></button>
       <button
         v-if="counts.extendedTime"
         type="button"
-        class="service-filter-switcher__option service-filter-switcher__option--extended"
+        class="attendance-type-switcher__option attendance-type-switcher__option--extended"
         :class="{ 'is-active': modelValue === 'extendedTime' }"
         :aria-pressed="modelValue === 'extendedTime'"
         @click="emit('update:modelValue', 'extendedTime')"
-      ><Timer :size="13" />Tiempo extendido <b>{{ counts.extendedTime }}</b></button>
+      ><span><Timer :size="17" /></span><strong>Extendido</strong><b>{{ counts.extendedTime }}</b></button>
       <button
         v-if="counts.transport"
         type="button"
-        class="service-filter-switcher__option service-filter-switcher__option--transport"
+        class="attendance-type-switcher__option attendance-type-switcher__option--transport"
         :class="{ 'is-active': modelValue === 'transport' }"
         :aria-pressed="modelValue === 'transport'"
         @click="emit('update:modelValue', 'transport')"
-      ><BusFront :size="13" />Transporte <b>{{ counts.transport }}</b></button>
+      ><span><BusFront :size="17" /></span><strong>Transporte</strong><b>{{ counts.transport }}</b></button>
     </div>
   </div>
 </template>

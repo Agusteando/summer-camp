@@ -249,8 +249,45 @@ img { max-width: 100%; }
 .service-filter-switcher__option--lunch.is-active b { background: #c86732; }
 .service-filter-switcher__option--dinner.is-active { border-color: #b9c8e9; color: #445f9f; background: #edf1fb; }
 .service-filter-switcher__option--dinner.is-active b { background: #526eae; }
-.service-filter-switcher__option--extra.is-active { border-color: #e8c98e; color: #8d631e; background: var(--warning-soft); }
-.service-filter-switcher__option--extra.is-active b { background: #a87321; }
+.service-filter-switcher__option--extended.is-active { border-color: #e8c98e; color: #8d631e; background: var(--warning-soft); }
+.service-filter-switcher__option--extended.is-active b { background: #a87321; }
+.service-filter-switcher__option--transport.is-active { border-color: #a8d3e8; color: #245f7b; background: #eaf6fb; }
+.service-filter-switcher__option--transport.is-active b { background: #327a9d; }
+
+.scope-context-filters--attendance { gap: 7px; }
+.attendance-type-switcher { min-width: 0; display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 9px; }
+.attendance-type-switcher__label { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+.attendance-type-switcher__track { min-width: 0; display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-snap-type: x proximity; }
+.attendance-type-switcher__track::-webkit-scrollbar { display: none; }
+.attendance-type-switcher__option {
+  min-height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 28px auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  scroll-snap-align: start;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.attendance-type-switcher__option > span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: #668292; background: #fff; }
+.attendance-type-switcher__option strong { font-size: 9px; font-weight: 900; }
+.attendance-type-switcher__option b { min-width: 22px; min-height: 22px; display: grid; place-items: center; padding: 0 5px; border-radius: 999px; color: #71869a; background: #fff; font-size: 8px; }
+.attendance-type-switcher__option.is-active { border-color: #7cd2b5; color: var(--teal-dark); background: var(--teal-soft); box-shadow: inset 0 0 0 1px rgba(0, 107, 120, 0.04); }
+.attendance-type-switcher__option.is-active > span { color: #fff; background: var(--teal-dark); }
+.attendance-type-switcher__option.is-active b { color: #fff; background: var(--teal-dark); }
+.attendance-type-switcher__option--lunch.is-active { border-color: #f0bd9d; color: #a44e21; background: #fff0e7; }
+.attendance-type-switcher__option--lunch.is-active > span, .attendance-type-switcher__option--lunch.is-active b { background: #c86732; }
+.attendance-type-switcher__option--dinner.is-active { border-color: #b9c8e9; color: #445f9f; background: #edf1fb; }
+.attendance-type-switcher__option--dinner.is-active > span, .attendance-type-switcher__option--dinner.is-active b { background: #526eae; }
+.attendance-type-switcher__option--extended.is-active { border-color: #e8c98e; color: #8d631e; background: var(--warning-soft); }
+.attendance-type-switcher__option--extended.is-active > span, .attendance-type-switcher__option--extended.is-active b { background: #a87321; }
+.attendance-type-switcher__option--transport.is-active { border-color: #a8d3e8; color: #245f7b; background: #eaf6fb; }
+.attendance-type-switcher__option--transport.is-active > span, .attendance-type-switcher__option--transport.is-active b { background: #327a9d; }
 .primary-button, .secondary-button {
   min-height: 38px;
   display: inline-flex;
@@ -327,14 +364,15 @@ img { max-width: 100%; }
 .student-service-labels > span { min-height: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-radius: 8px; color: #277567; background: var(--teal-soft); font-size: 8px; font-weight: 900; white-space: nowrap; }
 .student-service-labels > .is-lunch { color: #a44e21; background: #fff0e7; }
 .student-service-labels > .is-dinner { color: #445f9f; background: #edf1fb; }
-.student-service-labels > .is-extra { color: #8d631e; background: var(--warning-soft); }
+.student-service-labels > .is-extended { color: #8d631e; background: var(--warning-soft); }
+.student-service-labels > .is-transport { color: #245f7b; background: #eaf6fb; }
 .student-service-labels > .is-empty { color: var(--muted); background: #f0f4f5; }
 .student-service-labels--compact > span { min-height: 19px; padding-inline: 6px; border-radius: 7px; font-size: 7px; }
 .attendance-row__identity .student-service-labels { margin-top: 5px; }
 
 .attendance-progress {
   position: sticky;
-  top: 214px;
+  top: 234px;
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -475,9 +513,10 @@ img { max-width: 100%; }
   .scope-toolbar__count { min-width: 25px; min-height: 25px; font-size: 10px; }
   .scope-toolbar__actions { gap: 4px; }
   .scope-toolbar__context { margin-top: 6px; padding-top: 6px; }
-  .age-group-switcher, .service-filter-switcher { grid-template-columns: 1fr; gap: 0; }
-  .age-group-switcher__label, .service-filter-switcher__label { display: none; }
+  .age-group-switcher, .service-filter-switcher, .attendance-type-switcher { grid-template-columns: 1fr; gap: 0; }
+  .age-group-switcher__label, .service-filter-switcher__label, .attendance-type-switcher__label { display: none; }
   .age-group-switcher__option, .service-filter-switcher__option { min-height: 30px; padding-inline: 8px; }
+  .attendance-type-switcher__option { min-height: 44px; }
   .primary-button, .secondary-button { min-height: 34px; padding-inline: 9px; }
   .secondary-button--icon { width: 34px; }
   .toolbar-date-control { min-height: 34px; padding-inline: 8px; }
@@ -489,7 +528,7 @@ img { max-width: 100%; }
   .roster-row__identity strong, .attendance-row__identity strong { font-size: 12px; }
   .roster-row__identity small, .attendance-row__identity small { font-size: 8px; }
   .roster-row__details { grid-template-columns: 1fr; padding: 0 9px 9px 68px; }
-  .attendance-progress { top: 198px; grid-template-columns: repeat(4, 1fr); padding: 9px 5px 17px; border-radius: 15px; }
+  .attendance-progress { top: 207px; grid-template-columns: repeat(4, 1fr); padding: 9px 5px 17px; border-radius: 15px; }
   .attendance-progress > div { display: flex; flex-direction: column; gap: 2px; padding: 0 3px; }
   .attendance-progress > div svg { display: none; }
   .attendance-progress strong { font-size: 17px; }

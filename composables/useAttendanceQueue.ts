@@ -4,11 +4,10 @@ const DB_NAME = 'summer-camp-offline'
 const STORE = 'attendance_queue'
 
 const openDb = () => new Promise<IDBDatabase>((resolve, reject) => {
-  const request = indexedDB.open(DB_NAME, 3)
+  const request = indexedDB.open(DB_NAME, 4)
   request.onupgradeneeded = () => {
     const db = request.result
-    if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE)
-    db.createObjectStore(STORE, { keyPath: 'queueKey' })
+    if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'queueKey' })
   }
   request.onsuccess = () => resolve(request.result)
   request.onerror = () => reject(request.error)
@@ -30,8 +29,8 @@ const runTransaction = async <T>(mode: IDBTransactionMode, execute: (store: IDBO
 }
 
 export const useAttendanceQueue = () => {
-  const pendingCount = useState('pending-attendance-count-v1', () => 0)
-  const flushing = useState('attendance-flushing-v1', () => false)
+  const pendingCount = useState('pending-attendance-count-v2', () => 0)
+  const flushing = useState('attendance-flushing-v2', () => false)
 
   const list = async () => {
     if (!import.meta.client || !('indexedDB' in window)) return [] as AttendanceMutation[]

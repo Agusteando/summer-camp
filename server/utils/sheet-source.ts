@@ -1,5 +1,5 @@
 import { ageGroupFor, normalizeProgram } from '../../shared/catalog'
-import type { CampusName, StudentContact, StudentSchedule, StudentServices } from '../../types/summer'
+import type { CampusName, StudentContact, StudentSchedule, StudentServices, StudentServiceValues } from '../../types/summer'
 
 type SheetStudent = {
   id: string
@@ -12,6 +12,7 @@ type SheetStudent = {
   plantelLabel: string
   campus: CampusName
   services: StudentServices
+  serviceValues: StudentServiceValues
   schedule: StudentSchedule
   contacts: { primary: StudentContact; alternate: StudentContact }
   allergies: string
@@ -28,6 +29,7 @@ type SheetSummary = {
   lunch: number
   dinner: number
   extendedTime: number
+  transport: number
   huskyDreamers: number
   footballClinic: number
 }
@@ -74,9 +76,31 @@ const required = (value: unknown, name: string) => {
 }
 
 const asText = (value: unknown, max = 4000) => String(value ?? '').trim().slice(0, max)
-const asBoolean = (value: unknown) => value === true
 const asNumber = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0
 const asCampus = (value: unknown): CampusName => value === 'Toluca' ? 'Toluca' : 'Metepec'
+
+const normalizeServiceText = (value: unknown) => asText(value, 300)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim()
+
+const serviceIsActive = (value: unknown) => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  const normalized = normalizeServiceText(value)
+  if (!normalized) return false
+  return !new Set(['no', 'false', '0', 'ninguno', 'ninguna', 'sin servicio', 'no aplica', 'na', 'n a']).has(normalized)
+}
+
+const serviceRawValue = (student: any, key: keyof StudentServices) => {
+  const explicit = asText(student?.serviceValues?.[key], 300)
+  if (explicit) return explicit
+  const legacy = student?.services?.[key]
+  if (typeof legacy === 'string' || typeof legacy === 'number') return asText(legacy, 300)
+  return legacy === true ? 'Sí' : legacy === false ? 'No' : ''
+}
 
 const normalizeContact = (value: any): StudentContact => ({
   name: asText(value?.name, 300),
@@ -108,10 +132,18 @@ const normalizeStudent = (value: any): SourceStudent => {
     plantelLabel: asText(value?.plantelLabel, 120) || plantel,
     campus: asCampus(value?.campus),
     services: {
-      breakfast: asBoolean(value?.services?.breakfast),
-      lunch: asBoolean(value?.services?.lunch),
-      dinner: asBoolean(value?.services?.dinner),
-      extendedTime: asBoolean(value?.services?.extendedTime)
+      breakfast: serviceIsActive(value?.services?.breakfast ?? value?.serviceValues?.breakfast),
+      lunch: serviceIsActive(value?.services?.lunch ?? value?.serviceValues?.lunch),
+      dinner: serviceIsActive(value?.services?.dinner ?? value?.serviceValues?.dinner),
+      extendedTime: serviceIsActive(value?.services?.extendedTime ?? value?.serviceValues?.extendedTime),
+      transport: serviceIsActive(value?.services?.transport ?? value?.serviceValues?.transport)
+    },
+    serviceValues: {
+      breakfast: serviceRawValue(value, 'breakfast'),
+      lunch: serviceRawValue(value, 'lunch'),
+      dinner: serviceRawValue(value, 'dinner'),
+      extendedTime: serviceRawValue(value, 'extendedTime'),
+      transport: serviceRawValue(value, 'transport')
     },
     schedule: {
       entry: asText(value?.schedule?.entry, 30),
