@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { CloudOff, Search, UsersRound, X } from '@lucide/vue'
-import { ageGroupViewLabel, plantelSortIndex, serviceViewLabel } from '~/shared/catalog'
-import type { AgeGroupView, CampusName, ProgramScope, ServiceView } from '~/types/summer'
+import { CloudOff, Printer, Search, UsersRound, X } from '@lucide/vue'
+import { AGE_GROUPS, SERVICE_FILTERS, ageGroupViewLabel, plantelSortIndex, programLabel, serviceDisplayLabel, serviceViewLabel } from '~/shared/catalog'
+import type { AgeGroupView, CampusName, ProgramScope, ServiceView, SummerStudent } from '~/types/summer'
 
 const summer = useSummerData()
 const connectivity = useConnectivity()
@@ -12,6 +12,8 @@ const excel = useExcelExport()
 scope.initialize()
 
 const search = ref('')
+const printing = ref(false)
+const printGeneratedAt = ref('')
 const selectionAnchor = ref<HTMLElement | null>(null)
 const contentAnchor = ref<HTMLElement | null>(null)
 const workspaceAnchor = ref<HTMLElement | null>(null)
@@ -32,6 +34,93 @@ const activeAgeLabel = computed(() => ageGroupViewLabel(ageView.activeGroup.valu
 const activeContextLabel = computed(() => serviceView.activeService.value === 'all'
   ? activeAgeLabel.value
   : `${activeAgeLabel.value} · ${serviceViewLabel(serviceView.activeService.value)}`)
+
+const ageLabel = (student: SummerStudent) => {
+  if (student.age !== null) return `${student.age} años`
+  const group = AGE_GROUPS.find((item) => item.key === student.ageGroup)
+  return group ? `${group.label} años` : 'Edad no registrada'
+}
+
+const serviceSummary = (student: SummerStudent) => {
+  const labels = SERVICE_FILTERS
+    .filter(({ key }) => student.services[key])
+    .map(({ key }) => serviceDisplayLabel(key, student.serviceValues[key]))
+  return labels.length ? labels.join(' · ') : 'Sin servicios adicionales'
+}
+
+const contactSummary = (student: SummerStudent) => {
+  const contact = student.contacts.primary.name || student.contacts.primary.phone
+    ? student.contacts.primary
+    : student.contacts.alternate
+  return {
+    name: contact.name || 'Sin contacto registrado',
+    detail: [contact.relation, contact.phone].filter(Boolean).join(' · ')
+  }
+}
+
+type PrintStudentEntry = {
+  number: number
+  student: SummerStudent
+  age: string
+  services: string
+  contact: ReturnType<typeof contactSummary>
+}
+
+const printGroups = computed(() => {
+  let itemNumber = 0
+  const groups = new Map<string, { plantel: string; label: string; students: PrintStudentEntry[] }>()
+
+  visibleStudents.value.forEach((student) => {
+    const current = groups.get(student.plantel) || {
+      plantel: student.plantel,
+      label: student.plantelLabel,
+      students: []
+    }
+
+    current.students.push({
+      number: ++itemNumber,
+      student,
+      age: ageLabel(student),
+      services: serviceSummary(student),
+      contact: contactSummary(student)
+    })
+    groups.set(student.plantel, current)
+  })
+
+  return Array.from(groups.values())
+})
+
+const restorePrintState = (previousTitle: string) => {
+  document.title = previousTitle
+  printing.value = false
+}
+
+const printList = async () => {
+  if (!import.meta.client || !visibleStudents.value.length || !scope.campus.value || !scope.program.value) return
+
+  printing.value = true
+  printGeneratedAt.value = new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'long',
+    timeStyle: 'short'
+  }).format(new Date())
+
+  const previousTitle = document.title
+  const fileContext = activeContextLabel.value.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')
+  document.title = `Lista-${scope.campus.value}-${programLabel(scope.program.value)}-${fileContext}`
+
+  await nextTick()
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
+  let restoreTimer = 0
+  const restore = () => {
+    window.removeEventListener('afterprint', restore)
+    window.clearTimeout(restoreTimer)
+    restorePrintState(previousTitle)
+  }
+  window.addEventListener('afterprint', restore, { once: true })
+  restoreTimer = window.setTimeout(restore, 1800)
+  window.print()
+}
 
 const scrollTo = async (element: HTMLElement | null) => {
   if (!import.meta.client || !element) return
@@ -141,6 +230,19 @@ onBeforeUnmount(() => summer.stopPolling())
             @back="goBack"
             @export="exportList"
           >
+            <template #utility>
+              <button
+                class="secondary-button print-button"
+                type="button"
+                title="Imprimir o guardar como PDF"
+                aria-label="Imprimir lista o guardar como PDF"
+                :disabled="printing || !visibleStudents.length"
+                @click="printList"
+              >
+                <Printer :size="17" />
+                <span>{{ printing ? 'Abriendo…' : 'PDF' }}</span>
+              </button>
+            </template>
             <template #context>
               <div class="scope-context-filters">
                 <AgeGroupSwitcher
@@ -190,6 +292,85 @@ onBeforeUnmount(() => summer.stopPolling())
             <strong>Sin alumnos</strong>
             <p>{{ search ? 'Prueba con otro nombre o folio.' : 'No hay alumnos con este filtro.' }}</p>
           </div>
+        </section>
+
+        <section class="print-roster" aria-label="Lista para imprimir">
+          <header class="print-roster__header">
+            <img src="/brand/iecs-iedis-logo.png" alt="IECS e IEDIS">
+            <div class="print-roster__heading">
+              <span>Summer Camp 2026</span>
+              <h1>Lista de alumnos</h1>
+              <p>{{ scope.campus.value }} · {{ programLabel(scope.program.value) }} · {{ activeContextLabel }}</p>
+            </div>
+            <div class="print-roster__summary">
+              <strong>{{ visibleStudents.length }}</strong>
+              <span>alumno{{ visibleStudents.length === 1 ? '' : 's' }}</span>
+            </div>
+          </header>
+
+          <div class="print-roster__meta">
+            <span>Generada: {{ printGeneratedAt }}</span>
+            <span v-if="search">Búsqueda aplicada: “{{ search.trim() }}”</span>
+            <span>Orden: plantel y nombre</span>
+          </div>
+
+          <section v-for="group in printGroups" :key="group.plantel" class="print-roster__group">
+            <header class="print-roster__group-heading">
+              <div>
+                <strong>{{ group.label }}</strong>
+                <span>{{ group.plantel }}</span>
+              </div>
+              <b>{{ group.students.length }} alumno{{ group.students.length === 1 ? '' : 's' }}</b>
+            </header>
+
+            <table>
+              <colgroup>
+                <col class="print-col-number">
+                <col class="print-col-student">
+                <col class="print-col-schedule">
+                <col class="print-col-services">
+                <col class="print-col-contact">
+                <col class="print-col-notes">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Alumno</th>
+                  <th>Horario</th>
+                  <th>Servicios</th>
+                  <th>Contacto principal</th>
+                  <th>Alertas y observaciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="entry in group.students" :key="entry.student.id">
+                  <td class="print-roster__number">{{ entry.number }}</td>
+                  <td>
+                    <strong>{{ entry.student.name }}</strong>
+                    <span>#{{ entry.student.folio }} · {{ entry.age }}</span>
+                  </td>
+                  <td>
+                    <strong>{{ entry.student.schedule.entry || '—' }}–{{ entry.student.schedule.exit || '—' }}</strong>
+                  </td>
+                  <td>{{ entry.services }}</td>
+                  <td>
+                    <strong>{{ entry.contact.name }}</strong>
+                    <span v-if="entry.contact.detail">{{ entry.contact.detail }}</span>
+                  </td>
+                  <td>
+                    <span v-if="entry.student.allergies" class="print-roster__alert"><b>Alergias:</b> {{ entry.student.allergies }}</span>
+                    <span v-if="entry.student.observations"><b>Obs.:</b> {{ entry.student.observations }}</span>
+                    <span v-if="!entry.student.allergies && !entry.student.observations" class="print-roster__empty-note">Sin alertas</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <footer class="print-roster__footer">
+            <span>Summer Camp 2026 · IECS / IEDIS</span>
+            <span>Uso interno</span>
+          </footer>
         </section>
       </template>
     </template>

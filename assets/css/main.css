@@ -302,7 +302,9 @@ img { max-width: 100%; }
 .primary-button { border: 0; color: #fff; background: linear-gradient(135deg, var(--teal-dark), var(--success)); box-shadow: 0 8px 18px rgba(0, 130, 109, 0.17); }
 .primary-button:disabled { opacity: 0.5; box-shadow: none; }
 .secondary-button { border: 1px solid var(--line-strong); color: var(--ink); background: #fff; }
+.secondary-button:disabled { opacity: 0.5; }
 .secondary-button--icon { width: 38px; padding: 0; }
+.print-button { color: var(--teal-dark); }
 .toolbar-date-control {
   min-height: 38px;
   display: flex;
@@ -369,6 +371,8 @@ img { max-width: 100%; }
 .student-service-labels > .is-empty { color: var(--muted); background: #f0f4f5; }
 .student-service-labels--compact > span { min-height: 19px; padding-inline: 6px; border-radius: 7px; font-size: 7px; }
 .attendance-row__identity .student-service-labels { margin-top: 5px; }
+
+.print-roster { display: none; }
 
 .attendance-progress {
   position: sticky;
@@ -550,9 +554,140 @@ img { max-width: 100%; }
   .scope-back-button--toolbar { padding-inline: 8px; }
   .scope-toolbar__actions .primary-button span { display: none; }
   .scope-toolbar__actions .primary-button { width: 34px; padding: 0; }
+  .scope-toolbar__actions .print-button span { display: none; }
+  .scope-toolbar__actions .print-button { width: 34px; padding: 0; }
   .toolbar-date-control svg { display: none; }
   .toolbar-date-control { padding-inline: 6px; }
   .toolbar-date-control input { width: 92px; }
+}
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm 9mm 11mm; }
+
+  :root {
+    --print-ink: #153548;
+    --print-muted: #5f7481;
+    --print-line: #cfdcdf;
+    --print-soft: #f1f6f5;
+    --print-teal: #006b78;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body {
+    min-height: auto;
+    color: var(--print-ink);
+    background: #fff !important;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  body { font-weight: 400; }
+  .app-shell, .app-shell.has-bottom-nav, .app-main { min-height: auto; padding: 0; }
+  .page-container, .page-container--focused { width: 100%; margin: 0; padding: 0; }
+  .topbar, .content-anchor, .offline-banner, .export-error, .list-workspace, .bottom-nav { display: none !important; }
+  .print-roster { display: block !important; }
+
+  .print-roster__header {
+    display: grid;
+    grid-template-columns: 38mm minmax(0, 1fr) 27mm;
+    align-items: center;
+    gap: 7mm;
+    padding-bottom: 4.5mm;
+    border-bottom: 1.2pt solid var(--print-teal);
+  }
+
+  .print-roster__header img { width: 35mm; max-height: 18mm; object-fit: contain; object-position: left center; }
+  .print-roster__heading { min-width: 0; }
+  .print-roster__heading > span { color: var(--print-teal); font-size: 7.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+  .print-roster__heading h1 { margin: 1.5mm 0 0; color: var(--print-ink); font-size: 20pt; line-height: 1; letter-spacing: -0.03em; }
+  .print-roster__heading p { margin: 2mm 0 0; color: var(--print-muted); font-size: 8pt; font-weight: 600; }
+  .print-roster__summary { width: 25mm; min-height: 20mm; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 0.8pt solid #a8cccb; border-radius: 4mm; color: var(--print-teal); background: #eef7f5; }
+  .print-roster__summary strong { font-size: 18pt; line-height: 1; }
+  .print-roster__summary span { margin-top: 1mm; font-size: 7pt; font-weight: 700; text-transform: uppercase; }
+
+  .print-roster__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2mm 6mm;
+    margin: 3mm 0 4mm;
+    color: var(--print-muted);
+    font-size: 7pt;
+  }
+
+  .print-roster__meta span + span::before { content: "•"; margin-right: 6mm; color: #9ab0b7; }
+  .print-roster__group { margin-top: 4mm; break-inside: auto; }
+  .print-roster__group:first-of-type { margin-top: 0; }
+  .print-roster__group-heading {
+    min-height: 9mm;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 5mm;
+    padding: 1.8mm 3mm;
+    border: 0.8pt solid #b9d3d3;
+    border-bottom: 0;
+    border-radius: 2.5mm 2.5mm 0 0;
+    background: #eaf4f2;
+    break-after: avoid;
+  }
+
+  .print-roster__group-heading > div { display: flex; align-items: baseline; gap: 2.5mm; }
+  .print-roster__group-heading strong { color: var(--print-teal); font-size: 9pt; }
+  .print-roster__group-heading span { color: var(--print-muted); font-size: 7pt; font-weight: 700; }
+  .print-roster__group-heading b { color: var(--print-muted); font-size: 7pt; }
+
+  .print-roster table { width: 100%; border-collapse: collapse; table-layout: fixed; border: 0.8pt solid var(--print-line); }
+  .print-roster thead { display: table-header-group; }
+  .print-roster tr { break-inside: avoid; page-break-inside: avoid; }
+  .print-roster th {
+    padding: 2.2mm 2mm;
+    border: 0.6pt solid var(--print-line);
+    color: var(--print-muted);
+    background: var(--print-soft);
+    font-size: 6.5pt;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .print-roster td {
+    padding: 2.2mm 2mm;
+    border: 0.6pt solid var(--print-line);
+    color: var(--print-ink);
+    font-size: 7.2pt;
+    line-height: 1.25;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  .print-roster tbody tr:nth-child(even) td { background: #fafcfc; }
+  .print-roster td strong { display: block; font-size: 7.6pt; line-height: 1.2; }
+  .print-roster td span { display: block; margin-top: 0.7mm; color: var(--print-muted); font-size: 6.7pt; }
+  .print-roster td span:first-child { margin-top: 0; }
+  .print-roster__number { color: var(--print-muted) !important; font-weight: 700; text-align: center; }
+  .print-roster__alert { color: #8a3a32 !important; }
+  .print-roster__empty-note { color: #83949d !important; font-style: italic; }
+  .print-col-number { width: 4%; }
+  .print-col-student { width: 22%; }
+  .print-col-schedule { width: 10%; }
+  .print-col-services { width: 22%; }
+  .print-col-contact { width: 20%; }
+  .print-col-notes { width: 22%; }
+
+  .print-roster__footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 8mm;
+    margin-top: 5mm;
+    padding-top: 2.5mm;
+    border-top: 0.6pt solid var(--print-line);
+    color: var(--print-muted);
+    font-size: 6.5pt;
+  }
 }
 
 @media (max-width: 420px) {

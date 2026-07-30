@@ -1,1 +1,1 @@
-Añade un gitignore completo para Nuxt y Vercel
+feat: agrega impresión optimizada y exportación PDF para las listas de alumnos
